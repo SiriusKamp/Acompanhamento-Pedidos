@@ -1,13 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { ArrowDownToLine, Bell, CheckCheck, ChevronRight, CircleX, Clock3, LayoutDashboard, LoaderCircle, LogOut, Package, Plus, RefreshCw, Search, ShoppingBag, Sparkles, Wallet } from 'lucide-react';
+import { ArrowDownToLine, ArrowLeft, Bell, CheckCheck, ChevronRight, CircleX, Clock3, LayoutDashboard, LoaderCircle, LogOut, Package, Plus, RefreshCw, Search, ShoppingBag, Sparkles, Wallet, Zap } from 'lucide-react';
 import type { Order, OrderStatus, Product } from './model';
-import { initials, money, parseAmount, statusLabels, timeLabel } from './model';
+import { elapsedLabel, initials, money, parseAmount, statusLabels, timeLabel } from './model';
 import { createOrder, changeOrderStatus, createStock, getOrders, getProducts, getStocks, updateProductPrice, type NewOrder, type Stock } from './lib/pedidosApi';
 import { supabase } from './lib/supabase';
 import { OrderModal } from './components/OrderModal';
 import { ImportModal } from './components/ImportModal';
 import { AuthScreen } from './components/AuthScreen';
+import { ThemePicker, themeLabels, themeOrder, type Theme } from './components/ThemePicker';
 
 type Tab = 'orders' | 'products';
 const statuses: OrderStatus[] = ['waiting', 'preparing', 'finished', 'cancelled'];
@@ -16,38 +17,41 @@ function statusIcon(status: OrderStatus) {
   return { waiting: Clock3, preparing: Package, finished: CheckCheck, cancelled: CircleX }[status];
 }
 
-function nextActions(status: OrderStatus): Array<{ status: OrderStatus; label: string; primary?: boolean }> {
-  const actions: Record<OrderStatus, Array<{ status: OrderStatus; label: string; primary?: boolean }>> = {
+function nextActions(status: OrderStatus): Array<{ status: OrderStatus; label: string; primary?: boolean; back?: boolean }> {
+  const actions: Record<OrderStatus, Array<{ status: OrderStatus; label: string; primary?: boolean; back?: boolean }>> = {
     waiting: [{ status: 'preparing', label: 'Preparar', primary: true }, { status: 'cancelled', label: 'Cancelar' }],
-    preparing: [{ status: 'finished', label: 'Finalizar', primary: true }, { status: 'cancelled', label: 'Cancelar' }],
+    preparing: [{ status: 'waiting', label: 'Voltar', back: true }, { status: 'finished', label: 'Finalizar', primary: true }, { status: 'cancelled', label: 'Cancelar' }],
     finished: [],
-    cancelled: [{ status: 'waiting', label: 'Reabrir', primary: true }],
+    cancelled: [{ status: 'waiting', label: 'Voltar para aguardando', primary: true, back: true }],
   };
   return actions[status];
 }
 
-function OrderCard({ order, onStatus, busy }: {
-  order: Order; onStatus: (id: string, status: OrderStatus) => void; busy: boolean;
+function OrderCard({ order, onStatus, busy, now }: {
+  order: Order; onStatus: (id: string, status: OrderStatus) => void; busy: boolean; now: number;
 }) {
   const remaining = Math.max(0, order.finalTotal - order.paid);
   const change = Math.max(0, order.paid - order.finalTotal);
   return <article className="order-card">
-    <div className="order-card-top"><span className="order-number">#{String(order.number).padStart(4, '0')}</span><span className="order-time"><Clock3 size={13} /> {timeLabel(order.createdAt)}</span></div>
+    <div className="order-card-top"><span className="order-number">#{String(order.number).padStart(4, '0')}</span><span className="order-time">Criado às {timeLabel(order.createdAt)}</span></div>
+    <span className="order-elapsed" aria-label={`Tempo desde a criação: ${elapsedLabel(order.createdAt, now)}`}><Clock3 size={15} /> {elapsedLabel(order.createdAt, now)}</span>
     <h3>{order.customer || 'Cliente sem nome'}</h3>
-    <p className="order-note">{order.note || 'Pedido para acompanhar'}</p>
-    <div className="order-items">{order.items.map((item, index) => <div key={`${item.productId}-${index}`}><span><b>{item.quantity}×</b> {item.name}</span><span>{money(item.quantity * item.unitPrice)}</span></div>)}</div>
+    {order.note && <p className="order-note">{order.note}</p>}
+    <div className="order-items">{order.items.map((item, index) => <div className="order-item" key={`${item.productId}-${index}`}><span className="order-item-quantity">{item.quantity}×</span><strong className="order-item-name">{item.name}</strong><span className="order-item-price">{money(item.quantity * item.unitPrice)}</span></div>)}</div>
     <div className="order-financial"><div><span>Total</span><strong>{money(order.finalTotal)}</strong></div><small className={remaining > 0 ? 'payment-due' : 'payment-done'}>{remaining > 0 ? `Falta ${money(remaining)}` : change > 0 ? `Troco ${money(change)}` : 'Pagamento completo'}</small></div>
-    {nextActions(order.status).length > 0 && <div className="card-actions">{nextActions(order.status).map(action => <button key={action.status} className={action.primary ? 'card-action-primary' : 'card-action-secondary'} disabled={busy} onClick={() => onStatus(order.id, action.status)}>{action.label}{action.primary && <ChevronRight size={15} />}</button>)}</div>}
+    {nextActions(order.status).length > 0 && <div className="card-actions">{nextActions(order.status).map(action => <button key={action.status} className={action.primary ? 'card-action-primary' : 'card-action-secondary'} disabled={busy} onClick={() => onStatus(order.id, action.status)}>{action.back && <ArrowLeft size={15} />}{action.label}{action.primary && !action.back && <ChevronRight size={15} />}</button>)}</div>}
+    {order.status === 'finished' && <p className="order-locked">Finalizado · estoque baixado</p>}
   </article>;
 }
 
-function BoardColumn({ status, orders, onStatus, busyId }: {
-  status: OrderStatus; orders: Order[]; onStatus: (id: string, status: OrderStatus) => void; busyId: string | null;
+function BoardColumn({ status, orders, onStatus, busyId, now, mobileActive }: {
+  status: OrderStatus; orders: Order[]; onStatus: (id: string, status: OrderStatus) => void;
+  busyId: string | null; now: number; mobileActive: boolean;
 }) {
   const Icon = statusIcon(status);
-  return <section className={`board-column column-${status}`} aria-label={statusLabels[status]}>
+  return <section className={`board-column column-${status} ${mobileActive ? '' : 'mobile-hidden'}`} aria-label={statusLabels[status]}>
     <div className="column-head"><div className="column-title"><span className="status-icon"><Icon size={17} /></span><h2>{statusLabels[status]}</h2></div><span className="count-badge">{orders.length}</span></div>
-    <div className="column-content">{orders.length ? orders.map(order => <OrderCard key={order.id} order={order} onStatus={onStatus} busy={busyId === order.id} />)
+    <div className="column-content">{orders.length ? orders.map(order => <OrderCard key={order.id} order={order} onStatus={onStatus} busy={busyId === order.id} now={now} />)
       : <div className="column-empty"><div><Icon size={24} /></div><p>Nenhum pedido<br />{statusLabels[status].toLowerCase()}</p></div>}</div>
   </section>;
 }
@@ -76,6 +80,13 @@ function CatalogCard({ product, onSave, busy }: {
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('orders');
+  const [theme, setTheme] = useState<Theme>(() => {
+    const stored = localStorage.getItem('pedidos-theme-v1');
+    if (stored === 'light' || stored === 'dark' || stored === 'neon') return stored;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  });
+  const [now, setNow] = useState(Date.now());
+  const [mobileStage, setMobileStage] = useState<OrderStatus>('waiting');
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [stocks, setStocks] = useState<Stock[]>([]);
@@ -95,6 +106,20 @@ export default function App() {
   const [reload, setReload] = useState(0);
   const [slow, setSlow] = useState(false);
   const [toast, setToast] = useState('');
+  const busyIdRef = useRef<string | null>(null);
+  const ordersVersionRef = useRef(0);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem('pedidos-theme-v1', theme);
+  }, [theme]);
+
+  useEffect(() => {
+    const tick = () => setNow(Date.now());
+    const timer = window.setInterval(tick, 60_000);
+    document.addEventListener('visibilitychange', tick);
+    return () => { window.clearInterval(timer); document.removeEventListener('visibilitychange', tick); };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -154,6 +179,27 @@ export default function App() {
   }, [stockId, reload]);
 
   useEffect(() => {
+    if (!stockId || !session) return;
+    let active = true;
+    let inFlight = false;
+    const refresh = async () => {
+      if (!active || inFlight || document.hidden || busyIdRef.current) return;
+      inFlight = true;
+      const version = ordersVersionRef.current;
+      try {
+        const latest = await getOrders(stockId);
+        if (active && version === ordersVersionRef.current && !busyIdRef.current) setOrders(latest);
+      } catch {
+        // The next scheduled refresh retries; user actions still report their own errors.
+      } finally { inFlight = false; }
+    };
+    const timer = window.setInterval(() => { void refresh(); }, 30_000);
+    const onVisible = () => { if (!document.hidden) void refresh(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { active = false; window.clearInterval(timer); document.removeEventListener('visibilitychange', onVisible); };
+  }, [stockId, session?.user.id]);
+
+  useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(''), 4500);
     return () => window.clearTimeout(timer);
@@ -194,6 +240,7 @@ export default function App() {
 
   async function addOrder(input: NewOrder) {
     const created = await createOrder(stockId, input);
+    ordersVersionRef.current++;
     setOrders(current => {
       return [created, ...current.filter(order => order.id !== created.id)];
     });
@@ -201,18 +248,22 @@ export default function App() {
   }
 
   async function updateStatus(id: string, status: OrderStatus) {
+    busyIdRef.current = id;
+    ordersVersionRef.current++;
     setBusyId(id);
     try {
       const updated = await changeOrderStatus(stockId, id, status);
       setOrders(current => {
         return current.map(order => order.id === id ? updated : order);
       });
+      setMobileStage(status);
       setToast(`Pedido movido para ${statusLabels[status].toLowerCase()}.`);
     } catch (failure) { setToast(failure instanceof Error ? failure.message : 'Não foi possível atualizar o pedido.'); }
-    finally { setBusyId(null); }
+    finally { busyIdRef.current = null; setBusyId(null); }
   }
 
   async function savePrice(id: string, price: number) {
+    busyIdRef.current = id;
     setBusyId(id);
     try {
       const updated = await updateProductPrice(stockId, id, price);
@@ -220,7 +271,7 @@ export default function App() {
         return current.map(product => product.id === id ? updated : product);
       });
       setToast('Preço atualizado. Pedidos antigos mantêm o preço registrado na venda.');
-    } finally { setBusyId(null); }
+    } finally { busyIdRef.current = null; setBusyId(null); }
   }
 
   function imported(importedProducts: Product[]) {
@@ -235,9 +286,10 @@ export default function App() {
   }
 
   if (authLoading) return <div className="loading-panel full-screen"><LoaderCircle className="spin" size={27} /> Recuperando sessão...</div>;
-  if (!session) return <AuthScreen />;
+  if (!session) return <AuthScreen theme={theme} onThemeChange={setTheme} />;
   if (stocksLoading) return <div className="loading-panel full-screen"><LoaderCircle className="spin" size={27} /> Carregando estoques...</div>;
   if (!stockId) return <main className="auth-page"><section className="auth-card">
+    <ThemePicker theme={theme} onChange={setTheme} />
     <div className="auth-brand"><span className="brand-mark"><ShoppingBag size={23} /></span><strong>fluxo<span>.</span></strong></div>
     <h1>Seu primeiro estoque</h1><p>Crie um estoque ou use a mesma conta no Estoque Pro para trazer seus produtos.</p>
     {stocksError && <p className="form-error" role="alert">{stocksError}</p>}
@@ -259,19 +311,21 @@ export default function App() {
         <button className="mode-toggle" onClick={() => void supabase.auth.signOut()}><LogOut size={15} /> Sair da conta</button></div>
     </aside>
 
-    <main className="main-area"><header className="topbar"><div className="mobile-brand"><div className="brand-mark"><ShoppingBag size={19} /></div><strong>fluxo<span>.</span></strong></div><div className="breadcrumb">Visão geral <ChevronRight size={14} /> <strong>{tab === 'orders' ? 'Pedidos' : 'Produtos'}</strong></div><div className="topbar-right"><label className="stock-selector"><span>Estoque</span><select aria-label="Estoque ativo" value={stockId} onChange={event => chooseStock(event.target.value)}>{stocks.map(stock => <option key={stock.id} value={stock.id}>{stock.name}</option>)}</select></label><span className="today-label">{today}</span><span className="topbar-icon"><Bell size={19} /></span><span className="user-avatar">{initials(session.user.email ?? 'Usuário')}</span><button className="mobile-signout" aria-label="Sair da conta" onClick={() => void supabase.auth.signOut()}><LogOut size={17} /></button></div></header>
-      <div className="mobile-nav"><button className={tab === 'orders' ? 'active' : ''} onClick={() => setTab('orders')}><LayoutDashboard size={17} /> Pedidos</button><button className={tab === 'products' ? 'active' : ''} onClick={() => setTab('products')}><Package size={17} /> Produtos</button></div>
+    <main className="main-area"><header className="topbar"><div className="mobile-brand"><div className="brand-mark"><ShoppingBag size={19} /></div><strong>fluxo<span>.</span></strong></div><div className="breadcrumb">Visão geral <ChevronRight size={14} /> <strong>{tab === 'orders' ? 'Pedidos' : 'Produtos'}</strong></div><div className="topbar-right"><label className="stock-selector"><span>Estoque</span><select aria-label="Estoque ativo" value={stockId} onChange={event => chooseStock(event.target.value)}>{stocks.map(stock => <option key={stock.id} value={stock.id}>{stock.name}</option>)}</select></label><ThemePicker theme={theme} onChange={setTheme} /><span className="today-label">{today}</span><span className="topbar-icon"><Bell size={19} /></span><span className="user-avatar">{initials(session.user.email ?? 'Usuário')}</span><button className="mobile-signout" aria-label="Sair da conta" onClick={() => void supabase.auth.signOut()}><LogOut size={17} /></button></div></header>
+      <div className="mobile-nav"><button className={tab === 'orders' ? 'active' : ''} onClick={() => setTab('orders')}><LayoutDashboard size={17} /> Pedidos</button><button className={tab === 'products' ? 'active' : ''} onClick={() => setTab('products')}><Package size={17} /> Produtos</button><button className="mobile-theme" aria-label={`Tema atual: ${themeLabels[theme]}. Alterar tema`} title={`Tema: ${themeLabels[theme]}`} onClick={() => setTheme(themeOrder[(themeOrder.indexOf(theme) + 1) % themeOrder.length])}><Zap size={17} /><span>{themeLabels[theme]}</span></button></div>
       <div className="page-content">
         {tab === 'orders' ? <><section className="hero"><div className="hero-content"><span className="eyebrow"><Sparkles size={14} /> PAINEL DE OPERAÇÃO</span><h1>Um pedido de cada vez.<br /><em>Tudo em movimento.</em></h1><p>Acompanhe a operação em tempo real, do primeiro item à entrega.</p><div className="hero-actions"><button className="button button-white" onClick={() => setModal('order')}><Plus size={18} /> Criar pedido</button><button className="button button-hero-outline" onClick={() => setModal('import')}><ArrowDownToLine size={17} /> Importar itens</button></div></div><div className="hero-art" aria-hidden="true"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="floating-tile tile-one"><Package size={27} /></div><div className="floating-tile tile-two"><CheckCheck size={24} /></div><div className="floating-tile tile-three"><ShoppingBag size={31} /></div></div></section>
           <section className="metrics" aria-label="Resumo dos pedidos"><div className="metric"><span className="metric-icon metric-violet"><ShoppingBag size={22} /></span><div><small>Pedidos no total</small><strong>{orders.length}</strong></div></div><div className="metric"><span className="metric-icon metric-amber"><Clock3 size={22} /></span><div><small>Aguardando</small><strong>{counts.waiting}</strong></div></div><div className="metric"><span className="metric-icon metric-blue"><Package size={22} /></span><div><small>Em preparo</small><strong>{counts.preparing}</strong></div></div><div className="metric"><span className="metric-icon metric-green"><Wallet size={22} /></span><div><small>Finalizados</small><strong>{money(finishedTotal)}</strong></div></div></section>
-          <section className="section-heading"><div><span className="section-kicker">QUADRO DE PEDIDOS</span><h2>Acompanhe cada etapa</h2><p>Movimente os cartões conforme o pedido avança.</p></div><div className="heading-controls"><label className="search-field"><Search size={18} /><input aria-label="Pesquisar pedidos" placeholder="Buscar pedido ou cliente" value={orderSearch} onChange={event => setOrderSearch(event.target.value)} /></label><button className="button button-primary" onClick={() => setModal('order')}><Plus size={18} /> Novo pedido</button></div></section>
-          {loading ? <div className="loading-panel"><LoaderCircle className="spin" size={25} /><strong>Carregando pedidos e produtos...</strong>{slow && <span>A consulta está demorando. Aguarde mais um pouco.</span>}</div> : error ? <div className="error-panel"><strong>Não foi possível carregar os dados.</strong><p>{error}</p><div><button className="button button-secondary" onClick={() => setReload(value => value + 1)}><RefreshCw size={16} /> Tentar novamente</button><button className="button button-primary" onClick={() => setModal('import')}>Importar produtos</button></div></div> : <div className="board" aria-label="Pedidos por status">{statuses.map(status => <BoardColumn key={status} status={status} orders={filteredOrders.filter(order => order.status === status)} onStatus={updateStatus} busyId={busyId} />)}</div>}
+          <section className="section-heading"><div><span className="section-kicker">QUADRO DE PEDIDOS</span><h2>Acompanhe cada etapa</h2><p>Movimente os cartões conforme o pedido avança.</p></div><div className="heading-controls"><label className="search-field"><Search size={18} /><input aria-label="Pesquisar pedidos" placeholder="Buscar pedido ou cliente" value={orderSearch} onChange={event => setOrderSearch(event.target.value)} /></label><button className="button button-secondary refresh-button" aria-label="Atualizar pedidos" title="Atualizar pedidos" onClick={() => setReload(value => value + 1)}><RefreshCw size={17} /></button><button className="button button-primary new-order-button" onClick={() => setModal('order')}><Plus size={18} /> Novo pedido</button></div></section>
+          <nav className="mobile-stages" aria-label="Etapas dos pedidos">{statuses.map(status => <button key={status} aria-pressed={mobileStage === status} className={mobileStage === status ? `active stage-${status}` : `stage-${status}`} onClick={() => setMobileStage(status)}>{statusLabels[status]} <b>{counts[status]}</b></button>)}</nav>
+          {loading ? <div className="loading-panel"><LoaderCircle className="spin" size={25} /><strong>Carregando pedidos e produtos...</strong>{slow && <span>A consulta está demorando. Aguarde mais um pouco.</span>}</div> : error ? <div className="error-panel"><strong>Não foi possível carregar os dados.</strong><p>{error}</p><div><button className="button button-secondary" onClick={() => setReload(value => value + 1)}><RefreshCw size={16} /> Tentar novamente</button><button className="button button-primary" onClick={() => setModal('import')}>Importar produtos</button></div></div> : <div className="board" aria-label="Pedidos por status">{statuses.map(status => <BoardColumn key={status} status={status} orders={filteredOrders.filter(order => order.status === status)} onStatus={updateStatus} busyId={busyId} now={now} mobileActive={mobileStage === status} />)}</div>}
         </> : <><section className="catalog-hero"><div><span className="section-kicker">SEU CATÁLOGO</span><h1>Produtos & preços</h1><p>Os itens importados do estoque ficam prontos para entrar nos pedidos.</p></div><button className="button button-primary" onClick={() => setModal('import')}><ArrowDownToLine size={18} /> Importar produtos</button></section>
           <div className="catalog-toolbar"><label className="search-field"><Search size={18} /><input aria-label="Pesquisar produtos" placeholder="Buscar por nome, código ou categoria" value={productSearch} onChange={event => setProductSearch(event.target.value)} /></label><span>{filteredProducts.length} produto{filteredProducts.length === 1 ? '' : 's'}</span></div>
           {loading ? <div className="loading-panel"><LoaderCircle className="spin" size={25} /> Carregando catálogo...</div> : error ? <div className="error-panel"><strong>Não foi possível carregar o catálogo.</strong><p>{error}</p><button className="button button-primary" onClick={() => setModal('import')}>Importar produtos</button></div> : filteredProducts.length ? <div className="catalog-grid">{filteredProducts.map(product => <CatalogCard key={product.id} product={product} onSave={savePrice} busy={busyId === product.id} />)}</div> : <div className="catalog-empty"><div><Package size={31} /></div><h2>{products.length ? 'Nenhum item encontrado' : 'Seu catálogo começa aqui'}</h2><p>{products.length ? 'Tente outro nome ou código.' : 'Importe itens do estoque e defina os preços que vão aparecer nos pedidos.'}</p><button className="button button-primary" onClick={() => setModal('import')}><ArrowDownToLine size={17} /> Importar produtos</button></div>}
         </>}
       </div>
     </main>
+    {tab === 'orders' && <button className="mobile-create-order" onClick={() => setModal('order')}><Plus size={21} /> Criar pedido</button>}
     {toast && <div className="toast" role="status"><CheckCheck size={17} />{toast}</div>}
     {modal === 'order' && <OrderModal products={products} onClose={() => setModal(null)} onCreate={addOrder} onImport={() => setModal('import')} />}
     {modal === 'import' && <ImportModal stockId={stockId} stockName={stocks.find(stock => stock.id === stockId)?.name ?? 'atual'} currentProducts={products} onClose={() => setModal(null)} onImported={imported} />}

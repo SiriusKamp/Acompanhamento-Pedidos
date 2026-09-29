@@ -42,6 +42,19 @@ Estoque Pro. A autenticação e o controle de acesso são por proprietário de
 estoque. O navegador não recebe permissão direta nas tabelas de pedidos:
 as funções SQL verificam `assert_stock`.
 
+O quadro atualiza os pedidos do estoque ativo a cada 30 segundos enquanto a
+aba está visível; o tempo desde a criação é recalculado a cada minuto. No
+celular, as etapas aparecem em abas e o botão de criar pedido fica acessível
+na parte inferior. O tema Claro, Escuro ou Neon pode ser escolhido na interface
+e permanece salvo neste navegador.
+
+Pedidos podem voltar de **Em preparo** para **Aguardando**, e de **Cancelados**
+para **Aguardando**. Depois de **Finalizado**, o status não volta: a baixa de
+estoque já foi registrada. Para habilitar a nova transição em um Supabase onde
+o aplicativo já estava instalado, execute novamente
+[`supabase/orders_monolith.sql`](supabase/orders_monolith.sql) no SQL Editor
+antes de publicar este frontend. O script é reaplicável.
+
 ## Compatibilidade com a branch HTTP
 
 As tabelas `order_catalog_items`, `order_sales` e `order_sale_items` têm

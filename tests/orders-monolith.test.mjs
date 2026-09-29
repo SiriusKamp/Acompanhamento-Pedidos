@@ -111,6 +111,10 @@ try {
     .rows[0].data[0].items[0].unitPrice, 14.5);
 
   await db.query('SELECT public.orders_change_status($1,$2,$3)', [stock, created.id, 'preparing']);
+  await db.query('SELECT public.orders_change_status($1,$2,$3)', [stock, created.id, 'waiting']);
+  assert.equal((await db.query('SELECT quantity FROM public.mock_balance WHERE product_id=$1',
+    [product])).rows[0].quantity, 3);
+  await db.query('SELECT public.orders_change_status($1,$2,$3)', [stock, created.id, 'preparing']);
   const finished = (await db.query('SELECT public.orders_change_status($1,$2,$3) AS data',
     [stock, created.id, 'finished'])).rows[0].data;
   assert.equal(finished.status, 'finished');

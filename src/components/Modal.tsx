@@ -5,13 +5,15 @@ export function Modal({ title, subtitle, onClose, children, wide = false }: {
   title: string; subtitle?: string; onClose: () => void; children: ReactNode; wide?: boolean;
 }) {
   const dialog = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
     const oldOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     dialog.current?.querySelector<HTMLElement>('[data-autofocus]')?.focus();
     const keydown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') onCloseRef.current();
       if (event.key !== 'Tab' || !dialog.current) return;
       const focusable = [...dialog.current.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled])')];
       if (!focusable.length) return;
@@ -21,7 +23,7 @@ export function Modal({ title, subtitle, onClose, children, wide = false }: {
     };
     window.addEventListener('keydown', keydown);
     return () => { document.body.style.overflow = oldOverflow; window.removeEventListener('keydown', keydown); previous?.focus(); };
-  }, [onClose]);
+  }, []);
 
   return <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
     <div ref={dialog} className={`modal ${wide ? 'modal-wide' : ''}`} role="dialog" aria-modal="true" aria-label={title}>

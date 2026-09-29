@@ -61,3 +61,17 @@ export function initials(name: string) {
 export function timeLabel(value: string) {
   return new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' }).format(new Date(value));
 }
+
+export function elapsedLabel(value: string, now = Date.now()) {
+  const created = Date.parse(value);
+  if (!Number.isFinite(created)) return 'Tempo indisponível';
+  const minutes = Math.max(0, Math.floor((now - created) / 60_000));
+  if (minutes === 0) return 'Agora';
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  if (hours < 24) return remainder ? `${hours} h ${remainder} min` : `${hours} h`;
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+  return remainingHours ? `${days} d ${remainingHours} h` : `${days} d`;
+}

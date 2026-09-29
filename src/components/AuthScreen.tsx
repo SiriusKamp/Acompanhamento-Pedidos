@@ -1,8 +1,11 @@
 import { useState, type FormEvent } from 'react';
 import { LockKeyhole, ShoppingBag } from 'lucide-react';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
+import { ThemePicker, type Theme } from './ThemePicker';
 
-export function AuthScreen() {
+export function AuthScreen({ theme, onThemeChange }: {
+  theme: Theme; onThemeChange: (theme: Theme) => void;
+}) {
   const [register, setRegister] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -32,6 +35,7 @@ export function AuthScreen() {
   }
 
   return <main className="auth-page"><section className="auth-card">
+    <ThemePicker theme={theme} onChange={onThemeChange} />
     <div className="auth-brand"><span className="brand-mark"><ShoppingBag size={23} /></span><strong>fluxo<span>.</span></strong></div>
     <div className="auth-icon"><LockKeyhole size={22} /></div>
     <h1>{register ? 'Criar conta' : 'Entrar no estoque'}</h1>
