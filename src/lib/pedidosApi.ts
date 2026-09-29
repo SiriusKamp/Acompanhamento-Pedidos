@@ -1,11 +1,7 @@
 import type { Order, OrderStatus, Product } from '../model';
-
-// In development, Vite proxies /api to localhost:8086. Production sets the public API origin.
-const origin = import.meta.env.VITE_PEDIDOS_API_URL?.trim().replace(/\/+$/, '') ?? '';
-const SESSION_KEY = 'pedidos-stock-session';
+import { supabase } from './supabase';
 
 export interface Stock { id: string; name: string }
-export interface StockConnection { connectionId: string; stocks: Stock[] }
 export interface StockProduct {
   sourceProductId: string;
   name: string;
@@ -14,7 +10,6 @@ export interface StockProduct {
   isKit: boolean;
   suggestedPrice: number | null;
 }
-interface Page<T> { rows: T[]; total: number; page: number; size: number }
 export interface NewOrder {
   customer: string;
   note: string;
@@ -23,60 +18,91 @@ export interface NewOrder {
   paid: number;
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  let response: Response;
-  try {
-    response = await fetch(`${origin}/api/v1${path}`, {
-      ...options,
-      headers: { Accept: 'application/json', ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-        ...(sessionStorage.getItem(SESSION_KEY) ? { 'X-Orders-Session': sessionStorage.getItem(SESSION_KEY)! } : {}),
-        ...options.headers },
-    });
-  } catch {
-    throw new Error('A API de pedidos não respondeu. Verifique se ela está rodando na porta 8086.');
+function result<T>(data: unknown, error: { message: string; code?: string } | null): T {
+  if (error) {
+    if (error.code === 'PGRST202' || error.code === '42883') {
+      throw new Error('As funções de pedidos não estão instaladas no Supabase. Execute supabase/orders_monolith.sql.');
+    }
+    throw new Error(error.message);
   }
-  if (!response.ok) {
-    if (response.status === 401) sessionStorage.removeItem(SESSION_KEY);
-    const problem = await response.json().catch(() => null) as { detail?: string; message?: string; title?: string } | null;
-    throw new Error(problem?.detail || problem?.message || problem?.title || `Erro HTTP ${response.status}.`);
-  }
-  if (response.status === 204) return undefined as T;
-  return response.json() as Promise<T>;
+  return data as T;
 }
 
-export const getProducts = () => request<Product[]>('/products');
-export const updateProductPrice = (id: string, price: number) =>
-  request<Product>(`/products/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ price }) });
-export const getOrders = () => request<Order[]>('/orders');
-export const createOrder = (order: NewOrder) =>
-  request<Order>('/orders', { method: 'POST', body: JSON.stringify(order) });
-export const changeOrderStatus = (id: string, status: OrderStatus) =>
-  request<Order>(`/orders/${encodeURIComponent(id)}/status`, { method: 'PATCH', body: JSON.stringify({ status }) });
+export async function getStocks(): Promise<Stock[]> {
+  const { data, error } = await supabase.from('stocks').select('id,name').order('name');
+  return result<Stock[]>(data ?? [], error);
+}
 
-export async function connectStock(email: string, password: string): Promise<StockConnection> {
-  const connection = await request<StockConnection>('/stock/connections', {
-    method: 'POST', body: JSON.stringify({ email: email.trim(), password }),
+export async function createStock(userId: string, name: string): Promise<Stock> {
+  const { data, error } = await supabase.from('stocks')
+    .insert({ user_id: userId, name: name.trim() }).select('id,name').single();
+  return result<Stock>(data, error);
+}
+
+export async function getProducts(stockId: string): Promise<Product[]> {
+  const { data, error } = await supabase.rpc('orders_catalog', { p_stock_id: stockId });
+  const rows = result<Product[]>(data, error);
+  if (!Array.isArray(rows)) throw new Error('Catálogo de pedidos inválido.');
+  return rows;
+}
+
+export async function updateProductPrice(stockId: string, id: string, price: number): Promise<Product> {
+  const { data, error } = await supabase.rpc('orders_update_price', {
+    p_stock_id: stockId, p_catalog_id: id, p_price: price,
   });
-  sessionStorage.setItem(SESSION_KEY, connection.connectionId);
-  return connection;
+  return result<Product>(data, error);
 }
 
-export async function getStockProducts(connectionId: string, stockId: string): Promise<StockProduct[]> {
+export async function getOrders(stockId: string): Promise<Order[]> {
+  const { data, error } = await supabase.rpc('orders_list', { p_stock_id: stockId });
+  const rows = result<Order[]>(data, error);
+  if (!Array.isArray(rows)) throw new Error('Lista de pedidos inválida.');
+  return rows;
+}
+
+export async function createOrder(stockId: string, order: NewOrder): Promise<Order> {
+  const { data, error } = await supabase.rpc('orders_create', {
+    p_stock_id: stockId, p_data: order,
+  });
+  return result<Order>(data, error);
+}
+
+export async function changeOrderStatus(stockId: string, id: string, status: OrderStatus): Promise<Order> {
+  const { data, error } = await supabase.rpc('orders_change_status', {
+    p_stock_id: stockId, p_order_id: id, p_status: status,
+  });
+  return result<Order>(data, error);
+}
+
+export async function getStockProducts(stockId: string): Promise<StockProduct[]> {
   const rows: StockProduct[] = [];
   for (let page = 0; ; page++) {
-    const query = new URLSearchParams({ page: String(page), size: '100' });
-    const result = await request<Page<StockProduct>>(
-      `/stock/connections/${encodeURIComponent(connectionId)}/stocks/${encodeURIComponent(stockId)}/products?${query}`,
-    );
-    if (!Array.isArray(result.rows) || !Number.isFinite(result.total)) throw new Error('Resposta inválida ao consultar o estoque.');
-    rows.push(...result.rows);
-    if (rows.length >= result.total || result.rows.length === 0) return rows;
+    const { data, error } = await supabase.from('product_catalog')
+      .select('id,name,sku,type_name,is_kit,suggested_sale_price,next_sale')
+      .eq('stock_id', stockId).eq('active', true)
+      .order('name').order('id').range(page * 500, page * 500 + 499);
+    const batch = result<Array<{
+      id: string; name: string; sku: string; type_name: string | null;
+      is_kit: boolean; suggested_sale_price: number | null; next_sale: number | null;
+    }>>(data ?? [], error);
+    rows.push(...batch.map(row => ({
+      sourceProductId: row.id, name: row.name, code: row.sku,
+      category: row.type_name ?? 'Sem categoria', isKit: row.is_kit,
+      suggestedPrice: row.suggested_sale_price ?? row.next_sale,
+    })));
+    if (batch.length < 500) return rows;
   }
 }
 
-export const importProducts = (connectionId: string, stockId: string, items: Array<{ sourceProductId: string; price: number }>) =>
-  request<Product[]>('/products/import', {
-    method: 'POST', body: JSON.stringify({ connectionId, stockId, items }),
-  });
-
-export const apiOrigin = origin || 'http://localhost:8086 (proxy do Vite)';
+export async function importProducts(
+  stockId: string, items: Array<{ sourceProductId: string; price: number }>,
+): Promise<Product[]> {
+  const imported: Product[] = [];
+  for (let start = 0; start < items.length; start += 100) {
+    const { data, error } = await supabase.rpc('orders_import_catalog', {
+      p_stock_id: stockId, p_items: items.slice(start, start + 100),
+    });
+    imported.push(...result<Product[]>(data, error));
+  }
+  return imported;
+}
