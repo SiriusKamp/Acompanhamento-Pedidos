@@ -1,4 +1,4 @@
-import type { Order, OrderStatus, Product } from '../model';
+import type { ItemPreset, Order, OrderBoard, OrderStatus, Product } from '../model';
 import { supabase } from './supabase';
 
 export interface Stock { id: string; name: string }
@@ -21,7 +21,7 @@ export interface NewOrder {
 function result<T>(data: unknown, error: { message: string; code?: string } | null): T {
   if (error) {
     if (error.code === 'PGRST202' || error.code === '42883') {
-      throw new Error('As funções de pedidos não estão instaladas no Supabase. Execute supabase/orders_monolith.sql.');
+      throw new Error('As funções de pedidos/kanbans não estão instaladas. Execute supabase/migration_order_boards.sql após orders_monolith.sql.');
     }
     throw new Error(error.message);
   }
@@ -33,43 +33,77 @@ export async function getStocks(): Promise<Stock[]> {
   return result<Stock[]>(data ?? [], error);
 }
 
+export async function getOrderBoards(stockId: string): Promise<OrderBoard[]> {
+  const { data, error } = await supabase.rpc('order_boards_list', { p_stock_id: stockId });
+  const rows = result<OrderBoard[]>(data, error);
+  if (!Array.isArray(rows)) throw new Error('Lista de kanbans inválida.');
+  return rows;
+}
+
+export async function createOrderBoard(stockId: string, name: string): Promise<OrderBoard> {
+  const { data, error } = await supabase.rpc('order_boards_create', {
+    p_stock_id: stockId, p_name: name.trim(),
+  });
+  return result<OrderBoard>(data, error);
+}
+
+export async function getItemPresets(stockId: string): Promise<ItemPreset[]> {
+  const { data, error } = await supabase.rpc('order_presets_list', { p_stock_id: stockId });
+  const rows = result<ItemPreset[]>(data, error);
+  if (!Array.isArray(rows)) throw new Error('Lista de presets inválida.');
+  return rows;
+}
+
+export async function saveItemPreset(
+  stockId: string, name: string, items: ItemPreset['items'],
+): Promise<ItemPreset> {
+  const { data, error } = await supabase.rpc('order_presets_save', {
+    p_stock_id: stockId, p_name: name.trim(), p_items: items,
+  });
+  return result<ItemPreset>(data, error);
+}
+
 export async function createStock(userId: string, name: string): Promise<Stock> {
   const { data, error } = await supabase.from('stocks')
     .insert({ user_id: userId, name: name.trim() }).select('id,name').single();
   return result<Stock>(data, error);
 }
 
-export async function getProducts(stockId: string): Promise<Product[]> {
-  const { data, error } = await supabase.rpc('orders_catalog', { p_stock_id: stockId });
+export async function getProducts(stockId: string, boardId: string): Promise<Product[]> {
+  const { data, error } = await supabase.rpc('orders_catalog_board', {
+    p_stock_id: stockId, p_board_id: boardId,
+  });
   const rows = result<Product[]>(data, error);
   if (!Array.isArray(rows)) throw new Error('Catálogo de pedidos inválido.');
   return rows;
 }
 
-export async function updateProductPrice(stockId: string, id: string, price: number): Promise<Product> {
-  const { data, error } = await supabase.rpc('orders_update_price', {
-    p_stock_id: stockId, p_catalog_id: id, p_price: price,
+export async function updateProductPrice(stockId: string, boardId: string, id: string, price: number): Promise<Product> {
+  const { data, error } = await supabase.rpc('orders_update_price_board', {
+    p_stock_id: stockId, p_board_id: boardId, p_catalog_id: id, p_price: price,
   });
   return result<Product>(data, error);
 }
 
-export async function getOrders(stockId: string): Promise<Order[]> {
-  const { data, error } = await supabase.rpc('orders_list', { p_stock_id: stockId });
+export async function getOrders(stockId: string, boardId: string): Promise<Order[]> {
+  const { data, error } = await supabase.rpc('orders_list_board', {
+    p_stock_id: stockId, p_board_id: boardId,
+  });
   const rows = result<Order[]>(data, error);
   if (!Array.isArray(rows)) throw new Error('Lista de pedidos inválida.');
   return rows;
 }
 
-export async function createOrder(stockId: string, order: NewOrder): Promise<Order> {
-  const { data, error } = await supabase.rpc('orders_create', {
-    p_stock_id: stockId, p_data: order,
+export async function createOrder(stockId: string, boardId: string, order: NewOrder): Promise<Order> {
+  const { data, error } = await supabase.rpc('orders_create_board', {
+    p_stock_id: stockId, p_board_id: boardId, p_data: order,
   });
   return result<Order>(data, error);
 }
 
-export async function changeOrderStatus(stockId: string, id: string, status: OrderStatus): Promise<Order> {
-  const { data, error } = await supabase.rpc('orders_change_status', {
-    p_stock_id: stockId, p_order_id: id, p_status: status,
+export async function changeOrderStatus(stockId: string, boardId: string, id: string, status: OrderStatus): Promise<Order> {
+  const { data, error } = await supabase.rpc('orders_change_status_board', {
+    p_stock_id: stockId, p_board_id: boardId, p_order_id: id, p_status: status,
   });
   return result<Order>(data, error);
 }
@@ -95,12 +129,12 @@ export async function getStockProducts(stockId: string): Promise<StockProduct[]>
 }
 
 export async function importProducts(
-  stockId: string, items: Array<{ sourceProductId: string; price: number }>,
+  stockId: string, boardId: string, items: Array<{ sourceProductId: string; price: number }>,
 ): Promise<Product[]> {
   const imported: Product[] = [];
   for (let start = 0; start < items.length; start += 100) {
-    const { data, error } = await supabase.rpc('orders_import_catalog', {
-      p_stock_id: stockId, p_items: items.slice(start, start + 100),
+    const { data, error } = await supabase.rpc('orders_import_catalog_board', {
+      p_stock_id: stockId, p_board_id: boardId, p_items: items.slice(start, start + 100),
     });
     imported.push(...result<Product[]>(data, error));
   }

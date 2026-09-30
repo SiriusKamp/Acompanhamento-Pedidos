@@ -1,17 +1,43 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { ArrowDownToLine, ArrowLeft, Bell, CheckCheck, ChevronRight, CircleX, Clock3, LayoutDashboard, LoaderCircle, LogOut, Package, Plus, RefreshCw, Search, ShoppingBag, Sparkles, Wallet, Zap } from 'lucide-react';
-import type { Order, OrderStatus, Product } from './model';
+import { ArrowDownToLine, ArrowLeft, Bell, BellRing, CheckCheck, ChevronRight, CircleX, Clock3, LayoutDashboard, LoaderCircle, LogOut, Package, Plus, RefreshCw, Search, ShoppingBag, Sparkles, Wallet, Zap } from 'lucide-react';
+import type { ItemPreset, Order, OrderBoard, OrderStatus, Product } from './model';
 import { elapsedLabel, initials, money, parseAmount, statusLabels, timeLabel } from './model';
-import { createOrder, changeOrderStatus, createStock, getOrders, getProducts, getStocks, updateProductPrice, type NewOrder, type Stock } from './lib/pedidosApi';
+import { createOrder, changeOrderStatus, createOrderBoard, createStock, getItemPresets, getOrderBoards, getOrders, getProducts, getStocks, saveItemPreset, updateProductPrice, type NewOrder, type Stock } from './lib/pedidosApi';
 import { supabase } from './lib/supabase';
 import { OrderModal } from './components/OrderModal';
 import { ImportModal } from './components/ImportModal';
 import { AuthScreen } from './components/AuthScreen';
 import { ThemePicker, themeLabels, themeOrder, type Theme } from './components/ThemePicker';
+import { Modal } from './components/Modal';
 
 type Tab = 'orders' | 'products';
 const statuses: OrderStatus[] = ['waiting', 'preparing', 'finished', 'cancelled'];
+const CREATE_BOARD_OPTION = '__create_order_board__';
+
+function NewBoardModal({ onClose, onCreate }: {
+  onClose: () => void; onCreate: (name: string) => Promise<void>;
+}) {
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!name.trim()) { setError('Informe um nome para o kanban.'); return; }
+    setBusy(true); setError('');
+    try { await onCreate(name.trim()); onClose(); }
+    catch (failure) { setError(failure instanceof Error ? failure.message : 'Não foi possível criar o kanban.'); }
+    finally { setBusy(false); }
+  }
+  return <Modal title="Criar kanban" subtitle="Dê um nome para o dia, turno ou equipe." onClose={onClose}>
+    <form className="new-board-form" onSubmit={event => void submit(event)}>
+      <label className="field"><span>Nome do kanban</span><input data-autofocus maxLength={80} value={name}
+        onChange={event => setName(event.target.value)} placeholder="Ex.: Terça-feira · Equipe A" /></label>
+      {error && <p className="form-error" role="alert">{error}</p>}
+      <button className="button button-primary" type="submit" disabled={busy}>{busy ? 'Criando...' : 'Criar kanban'}</button>
+    </form>
+  </Modal>;
+}
 
 function statusIcon(status: OrderStatus) {
   return { waiting: Clock3, preparing: Package, finished: CheckCheck, cancelled: CircleX }[status];
@@ -27,13 +53,13 @@ function nextActions(status: OrderStatus): Array<{ status: OrderStatus; label: s
   return actions[status];
 }
 
-function OrderCard({ order, onStatus, busy, now }: {
-  order: Order; onStatus: (id: string, status: OrderStatus) => void; busy: boolean; now: number;
+function OrderCard({ order, onStatus, busy, now, isNew }: {
+  order: Order; onStatus: (id: string, status: OrderStatus) => void; busy: boolean; now: number; isNew: boolean;
 }) {
   const remaining = Math.max(0, order.finalTotal - order.paid);
   const change = Math.max(0, order.paid - order.finalTotal);
-  return <article className="order-card">
-    <div className="order-card-top"><span className="order-number">#{String(order.number).padStart(4, '0')}</span><span className="order-time">Criado às {timeLabel(order.createdAt)}</span></div>
+  return <article className={`order-card ${isNew ? 'order-card-new' : ''}`}>
+    <div className="order-card-top"><span className="order-number">#{String(order.number).padStart(4, '0')}</span><span className="order-time">Criado às {timeLabel(order.createdAt)}</span>{isNew && <span className="new-order-badge">NOVO</span>}</div>
     <span className="order-elapsed" aria-label={`Tempo desde a criação: ${elapsedLabel(order.createdAt, now)}`}><Clock3 size={15} /> {elapsedLabel(order.createdAt, now)}</span>
     <h3>{order.customer || 'Cliente sem nome'}</h3>
     {order.note && <p className="order-note">{order.note}</p>}
@@ -44,14 +70,14 @@ function OrderCard({ order, onStatus, busy, now }: {
   </article>;
 }
 
-function BoardColumn({ status, orders, onStatus, busyId, now, mobileActive }: {
+function BoardColumn({ status, orders, onStatus, busyId, now, mobileActive, newOrderIds }: {
   status: OrderStatus; orders: Order[]; onStatus: (id: string, status: OrderStatus) => void;
-  busyId: string | null; now: number; mobileActive: boolean;
+  busyId: string | null; now: number; mobileActive: boolean; newOrderIds: Set<string>;
 }) {
   const Icon = statusIcon(status);
   return <section className={`board-column column-${status} ${mobileActive ? '' : 'mobile-hidden'}`} aria-label={statusLabels[status]}>
     <div className="column-head"><div className="column-title"><span className="status-icon"><Icon size={17} /></span><h2>{statusLabels[status]}</h2></div><span className="count-badge">{orders.length}</span></div>
-    <div className="column-content">{orders.length ? orders.map(order => <OrderCard key={order.id} order={order} onStatus={onStatus} busy={busyId === order.id} now={now} />)
+    <div className="column-content">{orders.length ? orders.map(order => <OrderCard key={order.id} order={order} onStatus={onStatus} busy={busyId === order.id} now={now} isNew={newOrderIds.has(order.id)} />)
       : <div className="column-empty"><div><Icon size={24} /></div><p>Nenhum pedido<br />{statusLabels[status].toLowerCase()}</p></div>}</div>
   </section>;
 }
@@ -91,6 +117,12 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [stocks, setStocks] = useState<Stock[]>([]);
   const [stockId, setStockId] = useState('');
+  const [boards, setBoards] = useState<OrderBoard[]>([]);
+  const [boardId, setBoardId] = useState('');
+  const [boardsLoading, setBoardsLoading] = useState(false);
+  const [createBoardOpen, setCreateBoardOpen] = useState(false);
+  const [presets, setPresets] = useState<ItemPreset[]>([]);
+  const [newOrderIds, setNewOrderIds] = useState<Set<string>>(new Set());
   const [stocksLoading, setStocksLoading] = useState(false);
   const [stocksError, setStocksError] = useState('');
   const [stockReload, setStockReload] = useState(0);
@@ -108,6 +140,8 @@ export default function App() {
   const [toast, setToast] = useState('');
   const busyIdRef = useRef<string | null>(null);
   const ordersVersionRef = useRef(0);
+  const seenOrderIdsRef = useRef<Set<string>>(new Set());
+  const seenOrderScopeRef = useRef('');
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -129,7 +163,7 @@ export default function App() {
       if (!active) return;
       const nextUserId = next?.user.id ?? null;
       if (previousUserId !== nextUserId) {
-        setStocks([]); setStockId(''); setProducts([]); setOrders([]);
+        setStocks([]); setStockId(''); setBoardId(''); setBoards([]); setProducts([]); setOrders([]);
         previousUserId = nextUserId;
       }
       setSession(next); setAuthLoading(false);
@@ -148,7 +182,7 @@ export default function App() {
   useEffect(() => {
     const userId = session?.user.id;
     if (!userId) {
-      setStocks([]); setStockId(''); setProducts([]); setOrders([]); return;
+      setStocks([]); setStockId(''); setBoardId(''); setBoards([]); setProducts([]); setOrders([]); return;
     }
     let active = true;
     setStocksLoading(true); setStocksError('');
@@ -165,21 +199,54 @@ export default function App() {
 
   useEffect(() => {
     let active = true;
-    if (!stockId) { setProducts([]); setOrders([]); setLoading(false); return; }
+    if (!stockId) { setBoards([]); setBoardId(''); setProducts([]); setOrders([]); setLoading(false); return; }
+    setBoardsLoading(true); setBoardId(''); setBoards([]); setNewOrderIds(new Set());
+    void getOrderBoards(stockId).then(async rows => {
+      const available = rows.length ? rows : [await createOrderBoard(stockId, 'Geral')];
+      if (!active) return;
+      setBoards(available);
+      const preferred = localStorage.getItem(`pedidos-board:${session?.user.id}:${stockId}`);
+      setBoardId(available.find(board => board.id === preferred)?.id
+        ?? available.find(board => board.isDefault)?.id ?? available[0].id);
+    }).catch(failure => {
+      if (active) {
+        setError(failure instanceof Error ? failure.message : 'Não foi possível carregar os kanbans.');
+        setLoading(false);
+      }
+    }).finally(() => { if (active) setBoardsLoading(false); });
+    return () => { active = false; };
+  }, [stockId, session?.user.id]);
+
+  useEffect(() => {
+    if (!stockId) { setPresets([]); return; }
+    let active = true;
+    void getItemPresets(stockId).then(rows => { if (active) setPresets(rows); })
+      .catch(() => { if (active) setPresets([]); });
+    return () => { active = false; };
+  }, [stockId]);
+
+  useEffect(() => {
+    let active = true;
+    if (!stockId || !boardId) { setProducts([]); setOrders([]); setLoading(true); return; }
     setProducts([]); setOrders([]);
     setLoading(true); setError(''); setSlow(false);
     const timer = window.setTimeout(() => { if (active) setSlow(true); }, 12000);
-    void Promise.all([getProducts(stockId), getOrders(stockId)]).then(([newProducts, newOrders]) => {
+    const scope = `${stockId}:${boardId}`;
+    seenOrderIdsRef.current = new Set();
+    seenOrderScopeRef.current = scope;
+    void Promise.all([getProducts(stockId, boardId), getOrders(stockId, boardId)]).then(([newProducts, newOrders]) => {
       if (!active) return;
-      setProducts(newProducts); setOrders(newOrders); setLoading(false);
+      setProducts(newProducts); setOrders(newOrders);
+      seenOrderIdsRef.current = new Set(newOrders.map(order => order.id));
+      setLoading(false);
     }).catch(failure => {
       if (active) { setError(failure instanceof Error ? failure.message : 'Falha ao consultar pedidos.'); setLoading(false); }
     });
     return () => { active = false; window.clearTimeout(timer); };
-  }, [stockId, reload]);
+  }, [stockId, boardId, reload]);
 
   useEffect(() => {
-    if (!stockId || !session) return;
+    if (!stockId || !boardId || !session) return;
     let active = true;
     let inFlight = false;
     const refresh = async () => {
@@ -187,17 +254,50 @@ export default function App() {
       inFlight = true;
       const version = ordersVersionRef.current;
       try {
-        const latest = await getOrders(stockId);
-        if (active && version === ordersVersionRef.current && !busyIdRef.current) setOrders(latest);
+        const latest = await getOrders(stockId, boardId);
+        if (!active || version !== ordersVersionRef.current || busyIdRef.current) return;
+        const scope = `${stockId}:${boardId}`;
+        const seen = seenOrderScopeRef.current === scope ? seenOrderIdsRef.current : new Set<string>();
+        const arrived = latest.filter(order => order.status === 'waiting' && !seen.has(order.id));
+        if (seen.size && arrived.length) {
+          setNewOrderIds(current => new Set([...current, ...arrived.map(order => order.id)]));
+          setToast(arrived.length === 1
+            ? `Novo pedido #${String(arrived[0].number).padStart(4, '0')} está aguardando.`
+            : `${arrived.length} novos pedidos estão aguardando.`);
+        }
+        seenOrderScopeRef.current = scope;
+        seenOrderIdsRef.current = new Set(latest.map(order => order.id));
+        setOrders(latest);
       } catch {
         // The next scheduled refresh retries; user actions still report their own errors.
       } finally { inFlight = false; }
     };
-    const timer = window.setInterval(() => { void refresh(); }, 30_000);
+    const channel = supabase.channel(`orders-${stockId}-${boardId}`)
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'order_sales', filter: `stock_id=eq.${stockId}`,
+      }, payload => {
+        if (payload.new && 'board_id' in payload.new && payload.new.board_id === boardId) void refresh();
+      }).subscribe();
+    const timer = window.setInterval(() => { void refresh(); }, 10_000);
     const onVisible = () => { if (!document.hidden) void refresh(); };
     document.addEventListener('visibilitychange', onVisible);
-    return () => { active = false; window.clearInterval(timer); document.removeEventListener('visibilitychange', onVisible); };
-  }, [stockId, session?.user.id]);
+    return () => {
+      active = false; window.clearInterval(timer); document.removeEventListener('visibilitychange', onVisible);
+      void supabase.removeChannel(channel);
+    };
+  }, [stockId, boardId, session?.user.id]);
+
+  useEffect(() => {
+    if (!newOrderIds.size) return;
+    const timer = window.setTimeout(() => setNewOrderIds(new Set()), 120_000);
+    return () => window.clearTimeout(timer);
+  }, [newOrderIds]);
+
+  useEffect(() => {
+    const previousTitle = document.title;
+    document.title = counts.waiting ? `(${counts.waiting}) Aguardando · Fluxo` : 'Fluxo · Pedidos';
+    return () => { document.title = previousTitle; };
+  }, [orders]);
 
   useEffect(() => {
     if (!toast) return;
@@ -222,8 +322,26 @@ export default function App() {
   function chooseStock(next: string) {
     if (!session) return;
     localStorage.setItem(`pedidos-stock:${session.user.id}`, next);
-    setProducts([]); setOrders([]); setLoading(true);
+    setProducts([]); setOrders([]); setBoards([]); setBoardId(''); setPresets([]);
+    setNewOrderIds(new Set()); seenOrderIdsRef.current = new Set(); seenOrderScopeRef.current = '';
+    setLoading(true);
     setStockId(next); setModal(null);
+  }
+
+  function chooseBoard(next: string) {
+    if (!session || !stockId || !next) return;
+    localStorage.setItem(`pedidos-board:${session.user.id}:${stockId}`, next);
+    setBoardId(next); setProducts([]); setOrders([]); setNewOrderIds(new Set());
+    seenOrderIdsRef.current = new Set(); seenOrderScopeRef.current = '';
+    setOrderSearch(''); setProductSearch('');
+  }
+
+  async function addBoard(name: string) {
+    const created = await createOrderBoard(stockId, name);
+    setBoards(current => [...current, created]);
+    setCreateBoardOpen(false);
+    chooseBoard(created.id);
+    setToast(`Kanban “${created.name}” criado. Importe os itens deste quadro.`);
   }
 
   async function addStock() {
@@ -239,8 +357,10 @@ export default function App() {
   }
 
   async function addOrder(input: NewOrder) {
-    const created = await createOrder(stockId, input);
+    const created = await createOrder(stockId, boardId, input);
     ordersVersionRef.current++;
+    seenOrderIdsRef.current.add(created.id);
+    setNewOrderIds(current => new Set([...current, created.id]));
     setOrders(current => {
       return [created, ...current.filter(order => order.id !== created.id)];
     });
@@ -252,10 +372,11 @@ export default function App() {
     ordersVersionRef.current++;
     setBusyId(id);
     try {
-      const updated = await changeOrderStatus(stockId, id, status);
+      const updated = await changeOrderStatus(stockId, boardId, id, status);
       setOrders(current => {
         return current.map(order => order.id === id ? updated : order);
       });
+      setNewOrderIds(current => { const next = new Set(current); next.delete(id); return next; });
       setMobileStage(status);
       setToast(`Pedido movido para ${statusLabels[status].toLowerCase()}.`);
     } catch (failure) { setToast(failure instanceof Error ? failure.message : 'Não foi possível atualizar o pedido.'); }
@@ -266,7 +387,7 @@ export default function App() {
     busyIdRef.current = id;
     setBusyId(id);
     try {
-      const updated = await updateProductPrice(stockId, id, price);
+      const updated = await updateProductPrice(stockId, boardId, id, price);
       setProducts(current => {
         return current.map(product => product.id === id ? updated : product);
       });
@@ -283,6 +404,13 @@ export default function App() {
     });
     setToast(`${importedProducts.length} produto(s) importado(s).`);
     setReload(value => value + 1);
+  }
+
+  async function savePreset(name: string, items: ItemPreset['items']) {
+    const saved = await saveItemPreset(stockId, name, items);
+    setPresets(current => [saved, ...current.filter(preset => preset.id !== saved.id)]);
+    setToast(`Preset “${saved.name}” salvo.`);
+    return saved;
   }
 
   if (authLoading) return <div className="loading-panel full-screen"><LoaderCircle className="spin" size={27} /> Recuperando sessão...</div>;
@@ -316,9 +444,19 @@ export default function App() {
       <div className="page-content">
         {tab === 'orders' ? <><section className="hero"><div className="hero-content"><span className="eyebrow"><Sparkles size={14} /> PAINEL DE OPERAÇÃO</span><h1>Um pedido de cada vez.<br /><em>Tudo em movimento.</em></h1><p>Acompanhe a operação em tempo real, do primeiro item à entrega.</p><div className="hero-actions"><button className="button button-white" onClick={() => setModal('order')}><Plus size={18} /> Criar pedido</button><button className="button button-hero-outline" onClick={() => setModal('import')}><ArrowDownToLine size={17} /> Importar itens</button></div></div><div className="hero-art" aria-hidden="true"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="floating-tile tile-one"><Package size={27} /></div><div className="floating-tile tile-two"><CheckCheck size={24} /></div><div className="floating-tile tile-three"><ShoppingBag size={31} /></div></div></section>
           <section className="metrics" aria-label="Resumo dos pedidos"><div className="metric"><span className="metric-icon metric-violet"><ShoppingBag size={22} /></span><div><small>Pedidos no total</small><strong>{orders.length}</strong></div></div><div className="metric"><span className="metric-icon metric-amber"><Clock3 size={22} /></span><div><small>Aguardando</small><strong>{counts.waiting}</strong></div></div><div className="metric"><span className="metric-icon metric-blue"><Package size={22} /></span><div><small>Em preparo</small><strong>{counts.preparing}</strong></div></div><div className="metric"><span className="metric-icon metric-green"><Wallet size={22} /></span><div><small>Finalizados</small><strong>{money(finishedTotal)}</strong></div></div></section>
-          <section className="section-heading"><div><span className="section-kicker">QUADRO DE PEDIDOS</span><h2>Acompanhe cada etapa</h2><p>Movimente os cartões conforme o pedido avança.</p></div><div className="heading-controls"><label className="search-field"><Search size={18} /><input aria-label="Pesquisar pedidos" placeholder="Buscar pedido ou cliente" value={orderSearch} onChange={event => setOrderSearch(event.target.value)} /></label><button className="button button-secondary refresh-button" aria-label="Atualizar pedidos" title="Atualizar pedidos" onClick={() => setReload(value => value + 1)}><RefreshCw size={17} /></button><button className="button button-primary new-order-button" onClick={() => setModal('order')}><Plus size={18} /> Novo pedido</button></div></section>
+          <section className="section-heading"><div><span className="section-kicker">QUADRO DE PEDIDOS</span><h2>Acompanhe cada etapa</h2><p>Kanban: <strong>{boards.find(board => board.id === boardId)?.name ?? 'Carregando...'}</strong></p></div><div className="heading-controls">
+            <label className="board-selector"><span>Kanban ativo</span><select aria-label="Selecionar kanban" value={boardId} disabled={boardsLoading}
+              onChange={event => event.target.value === CREATE_BOARD_OPTION ? setCreateBoardOpen(true) : chooseBoard(event.target.value)}>
+              {boards.map(board => <option key={board.id} value={board.id}>{board.name}{board.isDefault ? ' · padrão' : ''}</option>)}
+              <option value={CREATE_BOARD_OPTION}>＋ Criar novo kanban…</option>
+            </select></label>
+            <label className="search-field"><Search size={18} /><input aria-label="Pesquisar pedidos" placeholder="Buscar pedido ou cliente" value={orderSearch} onChange={event => setOrderSearch(event.target.value)} /></label>
+            <button className="button button-secondary refresh-button" aria-label="Atualizar pedidos" title="Atualizar pedidos" onClick={() => setReload(value => value + 1)}><RefreshCw size={17} /></button><button className="button button-primary new-order-button" onClick={() => setModal('order')}><Plus size={18} /> Novo pedido</button></div></section>
+          <div className={counts.waiting ? 'waiting-banner has-waiting' : 'waiting-banner'} aria-live="polite">
+            <BellRing size={22} /><strong>{counts.waiting}</strong><div><b>{counts.waiting === 1 ? 'pedido aguardando' : 'pedidos aguardando'}</b><span>{counts.waiting ? 'A cozinha já pode iniciar o preparo.' : 'Nenhum pedido novo neste kanban.'}</span></div>
+          </div>
           <nav className="mobile-stages" aria-label="Etapas dos pedidos">{statuses.map(status => <button key={status} aria-pressed={mobileStage === status} className={mobileStage === status ? `active stage-${status}` : `stage-${status}`} onClick={() => setMobileStage(status)}>{statusLabels[status]} <b>{counts[status]}</b></button>)}</nav>
-          {loading ? <div className="loading-panel"><LoaderCircle className="spin" size={25} /><strong>Carregando pedidos e produtos...</strong>{slow && <span>A consulta está demorando. Aguarde mais um pouco.</span>}</div> : error ? <div className="error-panel"><strong>Não foi possível carregar os dados.</strong><p>{error}</p><div><button className="button button-secondary" onClick={() => setReload(value => value + 1)}><RefreshCw size={16} /> Tentar novamente</button><button className="button button-primary" onClick={() => setModal('import')}>Importar produtos</button></div></div> : <div className="board" aria-label="Pedidos por status">{statuses.map(status => <BoardColumn key={status} status={status} orders={filteredOrders.filter(order => order.status === status)} onStatus={updateStatus} busyId={busyId} now={now} mobileActive={mobileStage === status} />)}</div>}
+          {loading ? <div className="loading-panel"><LoaderCircle className="spin" size={25} /><strong>Carregando pedidos e produtos...</strong>{slow && <span>A consulta está demorando. Aguarde mais um pouco.</span>}</div> : error ? <div className="error-panel"><strong>Não foi possível carregar os dados.</strong><p>{error}</p><div><button className="button button-secondary" onClick={() => setReload(value => value + 1)}><RefreshCw size={16} /> Tentar novamente</button><button className="button button-primary" onClick={() => setModal('import')}>Importar produtos</button></div></div> : <div className="board" aria-label="Pedidos por status">{statuses.map(status => <BoardColumn key={status} status={status} orders={filteredOrders.filter(order => order.status === status)} onStatus={updateStatus} busyId={busyId} now={now} mobileActive={mobileStage === status} newOrderIds={newOrderIds} />)}</div>}
         </> : <><section className="catalog-hero"><div><span className="section-kicker">SEU CATÁLOGO</span><h1>Produtos & preços</h1><p>Os itens importados do estoque ficam prontos para entrar nos pedidos.</p></div><button className="button button-primary" onClick={() => setModal('import')}><ArrowDownToLine size={18} /> Importar produtos</button></section>
           <div className="catalog-toolbar"><label className="search-field"><Search size={18} /><input aria-label="Pesquisar produtos" placeholder="Buscar por nome, código ou categoria" value={productSearch} onChange={event => setProductSearch(event.target.value)} /></label><span>{filteredProducts.length} produto{filteredProducts.length === 1 ? '' : 's'}</span></div>
           {loading ? <div className="loading-panel"><LoaderCircle className="spin" size={25} /> Carregando catálogo...</div> : error ? <div className="error-panel"><strong>Não foi possível carregar o catálogo.</strong><p>{error}</p><button className="button button-primary" onClick={() => setModal('import')}>Importar produtos</button></div> : filteredProducts.length ? <div className="catalog-grid">{filteredProducts.map(product => <CatalogCard key={product.id} product={product} onSave={savePrice} busy={busyId === product.id} />)}</div> : <div className="catalog-empty"><div><Package size={31} /></div><h2>{products.length ? 'Nenhum item encontrado' : 'Seu catálogo começa aqui'}</h2><p>{products.length ? 'Tente outro nome ou código.' : 'Importe itens do estoque e defina os preços que vão aparecer nos pedidos.'}</p><button className="button button-primary" onClick={() => setModal('import')}><ArrowDownToLine size={17} /> Importar produtos</button></div>}
@@ -328,6 +466,7 @@ export default function App() {
     {tab === 'orders' && <button className="mobile-create-order" onClick={() => setModal('order')}><Plus size={21} /> Criar pedido</button>}
     {toast && <div className="toast" role="status"><CheckCheck size={17} />{toast}</div>}
     {modal === 'order' && <OrderModal products={products} onClose={() => setModal(null)} onCreate={addOrder} onImport={() => setModal('import')} />}
-    {modal === 'import' && <ImportModal stockId={stockId} stockName={stocks.find(stock => stock.id === stockId)?.name ?? 'atual'} currentProducts={products} onClose={() => setModal(null)} onImported={imported} />}
+    {modal === 'import' && <ImportModal stockId={stockId} boardId={boardId} stockName={boards.find(board => board.id === boardId)?.name ?? 'atual'} currentProducts={products} presets={presets} onClose={() => setModal(null)} onImported={imported} onSavePreset={savePreset} />}
+    {createBoardOpen && <NewBoardModal onClose={() => setCreateBoardOpen(false)} onCreate={addBoard} />}
   </div>;
 }

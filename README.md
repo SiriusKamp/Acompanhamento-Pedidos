@@ -15,12 +15,17 @@ preserva o frontend HTTP anterior e seu contrato `API_CONTRACT.md`.
    Não execute `schema.sql` do Estoque sobre uma base existente.
    Se as listas de produtos do Estoque ainda estiverem vazias, aplique antes
    `sirius-cosmical-stock2/supabase/repair_owns_stock_claims.sql`.
-2. Copie `.env.example` para `.env.local` e use a **mesma**
+2. Em seguida, execute
+   [supabase/migration_order_boards.sql](supabase/migration_order_boards.sql)
+   no mesmo banco. Ela cria o kanban padrão **Geral**, transfere para ele os
+   pedidos e itens já existentes e instala o catálogo separado por kanban,
+   presets e atualizações Realtime.
+3. Copie `.env.example` para `.env.local` e use a **mesma**
    `VITE_SUPABASE_URL` e chave pública/anon do monólito Estoque. A
    configuração local deste checkout já foi copiada da instalação do Estoque.
    O arquivo `.env.local` é ignorado pelo Git. Nunca use a senha do Postgres
    nem uma chave `service_role` em `VITE_`.
-3. Instale as dependências e inicie:
+4. Instale as dependências e inicie:
 
 ```bash
 pnpm install
@@ -33,6 +38,11 @@ crie um ali ou no Estoque Pro. Na primeira importação, selecione produtos/kits
 ativos e confirme os preços; o valor sugerido vem do produto/kit ou próximo
 lote. Reimportar atualiza o preço sem duplicar o produto.
 
+Cada estoque pode ter vários kanbans, nomeados por dia, turno ou equipe. Cada
+kanban tem seu próprio catálogo importado e seus pedidos. Presets guardam uma
+seleção de produtos e seus preços para preencher rapidamente a próxima
+importação; eles podem ser usados em qualquer kanban do mesmo estoque.
+
 Pedidos guardam o nome e preço unitário no momento da criação. Concluir um
 pedido chama `decrement_inventory` dentro da **mesma transação** que atualiza
 o status, com referência `pedido:<id>:finalizado`. Se o saldo for insuficiente,
@@ -42,8 +52,10 @@ Estoque Pro. A autenticação e o controle de acesso são por proprietário de
 estoque. O navegador não recebe permissão direta nas tabelas de pedidos:
 as funções SQL verificam `assert_stock`.
 
-O quadro atualiza os pedidos do estoque ativo a cada 30 segundos enquanto a
-aba está visível; o tempo desde a criação é recalculado a cada minuto. No
+O quadro recebe mudanças por Supabase Realtime e consulta novamente a cada
+10 segundos enquanto a aba está visível. Um aviso destacado mostra quantos
+pedidos aguardam, e novos cards ficam realçados por dois minutos. O tempo
+desde a criação é recalculado a cada minuto. No
 celular, as etapas aparecem em abas e o botão de criar pedido fica acessível
 na parte inferior. O tema Claro, Escuro ou Neon pode ser escolhido na interface
 e permanece salvo neste navegador.
@@ -57,12 +69,14 @@ antes de publicar este frontend. O script é reaplicável.
 
 ## Compatibilidade com a branch HTTP
 
-As tabelas `order_catalog_items`, `order_sales` e `order_sale_items` têm
-o mesmo formato da migração `Estoque/database/migration_orders_bridge.sql`.
-Assim, uma futura API Spring pode ler os mesmos pedidos após receber seus
-`GRANT`s e políticas `stock_api`. A branch `front` continua exigindo a API
-`acompanhamento-de-pedidos` em `localhost:8086` e a API Estoque; ela não é
-necessária para executar a `main`.
+A migração preserva os pedidos existentes no kanban **Geral**. As rotas HTTP
+legadas da API Estoque continuam lendo e gravando nesse kanban; novos quadros
+e presets são usados pelo monólito desta branch. Se o banco ainda não tiver a
+ponte Spring, aplique primeiro `Estoque/database/migration_orders_bridge.sql`
+e depois `supabase/migration_order_boards.sql`. A role `stock_api` recebe apenas
+leitura dos kanbans do próprio estoque por RLS. A branch `front` continua
+exigindo as APIs em `localhost:8086` e na porta 8080; ela não é necessária
+para executar a `main`.
 
 ## Publicar e verificar
 

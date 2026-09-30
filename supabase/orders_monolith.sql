@@ -231,7 +231,7 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'Pedido não encontrado.' USING ERRCODE = 'P0002'; END IF;
   IF NOT (
     (previous_status = 'waiting' AND p_status IN ('preparing', 'cancelled'))
-    OR (previous_status = 'preparing' AND p_status IN ('waiting', 'finished', 'cancelled'))
+    OR (previous_status = 'preparing' AND p_status IN ('finished', 'cancelled'))
     OR (previous_status = 'cancelled' AND p_status = 'waiting')
   ) THEN
     RAISE EXCEPTION 'Transição de status inválida.' USING ERRCODE = '22023';

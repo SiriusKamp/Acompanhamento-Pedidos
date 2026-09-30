@@ -22,6 +22,8 @@ export interface OrderItem {
 
 export interface Order {
   id: string;
+  boardId: string;
+  boardName?: string;
   number: number;
   customer: string;
   note: string;
@@ -32,6 +34,19 @@ export interface Order {
   status: OrderStatus;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface OrderBoard {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  orderCount?: number;
+}
+
+export interface ItemPreset {
+  id: string;
+  name: string;
+  items: Array<{ sourceProductId: string; price: number }>;
 }
 
 export const statusLabels: Record<OrderStatus, string> = {
