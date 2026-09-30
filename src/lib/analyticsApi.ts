@@ -4,12 +4,15 @@ import type {
 } from '../analytics';
 import { supabase } from './supabase';
 
-function unwrap<T>(data: unknown, error: { message: string; code?: string } | null): T {
+type DatabaseError = { message: string; code?: string; hint?: string | null; details?: string | null };
+
+function unwrap<T>(data: unknown, error: DatabaseError | null, operation: string): T {
   if (error) {
-    if (error.code === 'PGRST202' || error.code === '42883') {
-      throw new Error('O dashboard ainda não está instalado no banco. Execute supabase/migration_order_analytics.sql após migration_order_boards.sql.');
+    if (error.code === 'PGRST202') {
+      throw new Error(`A consulta ${operation} não existe no Supabase conectado a este deploy. Confirme se o Vercel usa o mesmo VITE_SUPABASE_URL onde migration_order_analytics.sql foi executada.`);
     }
-    throw new Error(error.message);
+    const diagnostic = [error.message, error.details, error.hint].filter(Boolean).join(' ');
+    throw new Error(`Falha na consulta ${operation}${error.code ? ` (${error.code})` : ''}: ${diagnostic}`);
   }
   if (!data || typeof data !== 'object') throw new Error('O banco retornou uma análise inválida.');
   return data as T;
@@ -28,7 +31,7 @@ export async function getAnalyticsOverview(stockId: string, filters: AnalyticsFi
   const { data, error } = await supabase.rpc('orders_analytics_overview', {
     ...baseFilters(stockId, filters), p_timezone: 'America/Sao_Paulo',
   });
-  return unwrap<AnalyticsOverview>(data, error);
+  return unwrap<AnalyticsOverview>(data, error, 'visão geral');
 }
 
 export async function getAnalyticsProducts(
@@ -44,7 +47,7 @@ export async function getAnalyticsProducts(
     p_limit: limit,
     p_offset: offset,
   });
-  return unwrap<ProductAnalyticsResult>(data, error);
+  return unwrap<ProductAnalyticsResult>(data, error, 'produtos');
 }
 
 export async function getAnalyticsOrders(
@@ -53,12 +56,12 @@ export async function getAnalyticsOrders(
   const { data, error } = await supabase.rpc('orders_analytics_orders', {
     ...baseFilters(stockId, filters), p_limit: limit, p_offset: offset,
   });
-  return unwrap<OrderAnalyticsResult>(data, error);
+  return unwrap<OrderAnalyticsResult>(data, error, 'pedidos');
 }
 
 export async function getAnalyticsOrderDetail(stockId: string, orderId: string): Promise<OrderAnalyticsDetail> {
   const { data, error } = await supabase.rpc('orders_analytics_order_detail', {
     p_stock_id: stockId, p_order_id: orderId,
   });
-  return unwrap<OrderAnalyticsDetail>(data, error);
+  return unwrap<OrderAnalyticsDetail>(data, error, 'detalhe do pedido');
 }
