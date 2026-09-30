@@ -20,12 +20,16 @@ preserva o frontend HTTP anterior e seu contrato `API_CONTRACT.md`.
    no mesmo banco. Ela cria o kanban padrão **Geral**, transfere para ele os
    pedidos e itens já existentes e instala o catálogo separado por kanban,
    presets e atualizações Realtime.
-3. Copie `.env.example` para `.env.local` e use a **mesma**
+3. Para habilitar custo, lucro e recomendações por pedido, execute também
+   [supabase/migration_order_analytics.sql](supabase/migration_order_analytics.sql).
+   Ela vincula pedidos finalizados aos movimentos FIFO e cria as consultas
+   seguras do dashboard estratégico.
+4. Copie `.env.example` para `.env.local` e use a **mesma**
    `VITE_SUPABASE_URL` e chave pública/anon do monólito Estoque. A
    configuração local deste checkout já foi copiada da instalação do Estoque.
    O arquivo `.env.local` é ignorado pelo Git. Nunca use a senha do Postgres
    nem uma chave `service_role` em `VITE_`.
-4. Instale as dependências e inicie:
+5. Instale as dependências e inicie:
 
 ```bash
 pnpm install
@@ -59,6 +63,13 @@ desde a criação é recalculado a cada minuto. No
 celular, as etapas aparecem em abas e o botão de criar pedido fica acessível
 na parte inferior. O tema Claro, Escuro ou Neon pode ser escolhido na interface
 e permanece salvo neste navegador.
+
+A seção **Análises** usa exclusivamente pedidos finalizados. A receita vem do
+valor final do pedido e o CMV vem dos lotes FIFO realmente consumidos. Quando
+um pedido histórico não tiver baixa vinculável, o dashboard mostra o aviso de
+cobertura incompleta em vez de assumir custo zero. Veja
+[RUNBOOK_DASHBOARD_ESTRATEGICO.md](RUNBOOK_DASHBOARD_ESTRATEGICO.md) para as
+regras de lucro, filtros, recomendações e implantação.
 
 Pedidos podem voltar de **Em preparo** para **Aguardando**, e de **Cancelados**
 para **Aguardando**. Depois de **Finalizado**, o status não volta: a baixa de
