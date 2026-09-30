@@ -253,7 +253,9 @@ BEGIN
   ), previous_lines AS (
     SELECT * FROM public.order_analytics_lines(p_stock_id, p_board_ids, previous_from, p_from)
   ), current_orders AS (
-    SELECT order_id, max(board_id) AS board_id, max(board_name) AS board_name,
+    -- Every order belongs to exactly one board. PostgreSQL has no max(uuid),
+    -- so take the first UUID from the group instead of aggregating it with max.
+    SELECT order_id, (array_agg(board_id))[1] AS board_id, max(board_name) AS board_name,
       max(finished_at) AS finished_at, sum(allocated_revenue) AS revenue,
       bool_and(cost_complete) AS cost_complete,
       CASE WHEN bool_and(cost_complete) THEN sum(actual_cost) END AS cost
@@ -449,7 +451,7 @@ BEGIN
   WITH lines AS (
     SELECT * FROM public.order_analytics_lines(p_stock_id, p_board_ids, p_from, p_to)
   ), totals AS (
-    SELECT order_id, max(order_number) AS number, max(board_id) AS board_id, max(board_name) AS board_name,
+    SELECT order_id, max(order_number) AS number, (array_agg(board_id))[1] AS board_id, max(board_name) AS board_name,
       max(customer) AS customer, max(created_at) AS created_at, max(finished_at) AS finished_at,
       max(suggested_total) AS suggested_total, max(final_total) AS final_total,
       count(*) AS line_count, sum(quantity) AS item_quantity, sum(allocated_revenue) AS revenue,
