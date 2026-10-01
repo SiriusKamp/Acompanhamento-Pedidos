@@ -207,16 +207,16 @@ BEGIN
     LEFT JOIN public.products product ON product.id = coalesce(i.product_id, catalog.product_id)
   ), raw_allocations AS (
     SELECT source_lines.*,
-      CASE WHEN source_lines.suggested_total > 0 THEN source_lines.final_total * source_lines.source_listed_revenue / source_lines.suggested_total
-        WHEN source_lines.quantity_total > 0 THEN source_lines.final_total * source_lines.source_quantity / source_lines.quantity_total
+      CASE WHEN suggested_total > 0 THEN final_total * source_listed_revenue / suggested_total
+        WHEN quantity_total > 0 THEN final_total * source_quantity / quantity_total
         ELSE 0 END AS raw_revenue
     FROM source_lines
   ), allocations AS (
     SELECT raw_allocations.*,
-      CASE WHEN raw_allocations.line_position = raw_allocations.line_count THEN raw_allocations.final_total - coalesce(
-        sum(round(raw_allocations.raw_revenue, 2)) OVER (PARTITION BY raw_allocations.id ORDER BY raw_allocations.source_line_id
+      CASE WHEN line_position = line_count THEN final_total - coalesce(
+        sum(round(raw_revenue, 2)) OVER (PARTITION BY id ORDER BY source_line_id
           ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), 0)
-      ELSE round(raw_allocations.raw_revenue, 2) END AS line_revenue
+      ELSE round(raw_revenue, 2) END AS line_revenue
     FROM raw_allocations
   ), costs AS (
     SELECT o.id AS cost_order_id, operation_item.product_id AS cost_product_id,
