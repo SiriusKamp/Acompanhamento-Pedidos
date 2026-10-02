@@ -24,12 +24,22 @@ preserva o frontend HTTP anterior e seu contrato `API_CONTRACT.md`.
    [supabase/migration_order_analytics.sql](supabase/migration_order_analytics.sql).
    Ela vincula pedidos finalizados aos movimentos FIFO e cria as consultas
    seguras do dashboard estratégico.
-4. Copie `.env.example` para `.env.local` e use a **mesma**
+4. Em seguida, execute [supabase/migration_order_sale_settlement.sql](supabase/migration_order_sale_settlement.sql).
+   Ela finaliza pedidos mesmo em caso de falta de saldo, baixa os itens que
+   puderem ser baixados até zero, registra somente a diferença pendente, congela
+   custo, preço e margem por item e permite custo unitário manual no catálogo.
+   Em bancos que já receberam essa migration antes dos índices de liquidação,
+   execute também [supabase/migration_order_sale_settlement_indexes.sql](supabase/migration_order_sale_settlement_indexes.sql).
+5. Execute [supabase/migration_order_sale_partial_settlement.sql](supabase/migration_order_sale_partial_settlement.sql)
+   para instalar a correção incremental de baixa parcial e snapshots em bancos
+   existentes. Ela também pode ser executada após a migration principal em uma
+   instalação nova.
+6. Copie `.env.example` para `.env.local` e use a **mesma**
    `VITE_SUPABASE_URL` e chave pública/anon do monólito Estoque. A
    configuração local deste checkout já foi copiada da instalação do Estoque.
    O arquivo `.env.local` é ignorado pelo Git. Nunca use a senha do Postgres
    nem uma chave `service_role` em `VITE_`.
-5. Instale as dependências e inicie:
+7. Instale as dependências e inicie:
 
 ```bash
 pnpm install
@@ -47,14 +57,13 @@ kanban tem seu próprio catálogo importado e seus pedidos. Presets guardam uma
 seleção de produtos e seus preços para preencher rapidamente a próxima
 importação; eles podem ser usados em qualquer kanban do mesmo estoque.
 
-Pedidos guardam o nome e preço unitário no momento da criação. Concluir um
-pedido chama `decrement_inventory` dentro da **mesma transação** que atualiza
-o status, com referência `pedido:<id>:finalizado`. Se o saldo for insuficiente,
-ambas as alterações são revertidas. Cada item do pedido baixa unidades
-inteiras do produto/kit; kits precisam estar produzidos no estoque, como no
-Estoque Pro. A autenticação e o controle de acesso são por proprietário de
-estoque. O navegador não recebe permissão direta nas tabelas de pedidos:
-as funções SQL verificam `assert_stock`.
+Pedidos guardam o nome, preço e custo unitário manual no momento da criação.
+Concluir um pedido sempre atualiza o status. Primeiro o banco tenta uma baixa
+FIFO única; se faltar saldo, baixa separadamente os itens disponíveis e registra
+os demais como pendência. Cada item do pedido baixa unidades inteiras do
+produto/kit; kits precisam estar produzidos no estoque, como no Estoque Pro.
+O dashboard mostra baixa parcial, pendências e itens sem custo. O custo FIFO
+real prevalece; o custo unitário manual só cobre um item sem baixa rastreável.
 
 O quadro recebe mudanças por Supabase Realtime e consulta novamente a cada
 10 segundos enquanto a aba está visível. Um aviso destacado mostra quantos
@@ -78,16 +87,13 @@ o aplicativo já estava instalado, execute novamente
 [`supabase/orders_monolith.sql`](supabase/orders_monolith.sql) no SQL Editor
 antes de publicar este frontend. O script é reaplicável.
 
-## Compatibilidade com a branch HTTP
+## Modo monólito
 
-A migração preserva os pedidos existentes no kanban **Geral**. As rotas HTTP
-legadas da API Estoque continuam lendo e gravando nesse kanban; novos quadros
-e presets são usados pelo monólito desta branch. Se o banco ainda não tiver a
-ponte Spring, aplique primeiro `Estoque/database/migration_orders_bridge.sql`
-e depois `supabase/migration_order_boards.sql`. A role `stock_api` recebe apenas
-leitura dos kanbans do próprio estoque por RLS. A branch `front` continua
-exigindo as APIs em `localhost:8086` e na porta 8080; ela não é necessária
-para executar a `main`.
+O projeto não depende de Spring nem de APIs HTTP locais. O navegador usa as
+RPCs e tabelas do mesmo Supabase do Estoque Pro. Quando aprovada e aplicada,
+`sirius-cosmical-stock2/supabase/migration_monolith_no_rls.sql` desativa RLS
+nas tabelas públicas; Storage mantém as regras próprias para os arquivos de
+imagem.
 
 ## Publicar e verificar
 
@@ -102,10 +108,12 @@ pnpm run test:stock
 pnpm build
 ```
 
-O teste usa PostgreSQL em memória (PGlite) para validar importação idempotente,
-fotografia de preços, isolamento por usuário e baixa única/atômica. O banco
-Supabase remoto não é alterado pelos testes. `test:stock` requer os projetos
-`sirius-cosmical-stock2` e `Estoque` como irmãos deste diretório para
-confirmar a baixa FIFO e a compatibilidade com a migração Spring.
+Os testes usam PostgreSQL em memória (PGlite) para validar importação
+idempotente, fotografia de preços, baixa parcial com pendência, snapshots
+financeiros e capacidade de receitas com ingredientes indivisíveis. O teste de
+capacidade lê as migrations do projeto `sirius-cosmical-stock2`, que precisa
+estar como irmão deste diretório. O banco Supabase remoto não é alterado pelos
+testes. `test:stock` também requer esse projeto irmão para confirmar a baixa FIFO
+no monólito.
 Após aplicar o SQL remoto, valide
 login, importação, criação e finalização de um pedido num estoque de teste.

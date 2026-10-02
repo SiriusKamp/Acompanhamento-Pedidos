@@ -1,5 +1,5 @@
 import type {
-  AnalyticsFilters, AnalyticsOverview, OrderAnalyticsDetail, OrderAnalyticsResult,
+  AnalyticsFilters, AnalyticsOverview, InventoryHealth, OrderAnalyticsDetail, OrderAnalyticsResult,
   ProductAnalyticsResult, ProductSort,
 } from '../analytics';
 import { supabase } from './supabase';
@@ -64,4 +64,9 @@ export async function getAnalyticsOrderDetail(stockId: string, orderId: string):
     p_stock_id: stockId, p_order_id: orderId,
   });
   return unwrap<OrderAnalyticsDetail>(data, error, 'detalhe do pedido');
+}
+
+export async function getInventoryHealth(stockId: string, filters: AnalyticsFilters): Promise<InventoryHealth> {
+  const { data, error } = await supabase.rpc('orders_inventory_health', baseFilters(stockId, filters));
+  return unwrap<InventoryHealth>(data, error, 'pendências de estoque');
 }

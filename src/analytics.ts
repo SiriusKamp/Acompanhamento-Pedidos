@@ -64,6 +64,17 @@ export interface AnalyticsQuality {
   coveragePercent: number;
 }
 
+export interface InventoryHealth {
+  finishedOrders: number;
+  settledOrders: number;
+  partialOrders: number;
+  pendingOrders: number;
+  pendingItems: number;
+  manualCostItems: number;
+  missingCostItems: number;
+  alerts: Array<{ productName: string; quantity: number; settledQuantity: number; unit: string; message: string | null }>;
+}
+
 export interface AnalyticsOverview {
   summary: FinancialSummary;
   previous: FinancialSummary;
@@ -146,7 +157,7 @@ export interface OrderAnalyticsDetailItem {
   profit: number | null;
   margin: number | null;
   costComplete: boolean;
-  lots: Array<{ lotId: string; code: string; quantityBase: number; cost: number }>;
+  lots: Array<{ lotId: string; code: string; productName: string; quantityBase: number; cost: number }>;
 }
 
 export interface OrderAnalyticsDetail {

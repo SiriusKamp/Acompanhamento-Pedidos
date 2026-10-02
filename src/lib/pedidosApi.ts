@@ -78,9 +78,11 @@ export async function getProducts(stockId: string, boardId: string): Promise<Pro
   return rows;
 }
 
-export async function updateProductPrice(stockId: string, boardId: string, id: string, price: number): Promise<Product> {
-  const { data, error } = await supabase.rpc('orders_update_price_board', {
-    p_stock_id: stockId, p_board_id: boardId, p_catalog_id: id, p_price: price,
+export async function updateProductPrice(
+  stockId: string, boardId: string, id: string, price: number, unitCost: number | null,
+): Promise<Product> {
+  const { data, error } = await supabase.rpc('orders_update_catalog_item_board', {
+    p_stock_id: stockId, p_board_id: boardId, p_catalog_id: id, p_price: price, p_unit_cost: unitCost,
   });
   return result<Product>(data, error);
 }
@@ -129,7 +131,7 @@ export async function getStockProducts(stockId: string): Promise<StockProduct[]>
 }
 
 export async function importProducts(
-  stockId: string, boardId: string, items: Array<{ sourceProductId: string; price: number }>,
+  stockId: string, boardId: string, items: Array<{ sourceProductId: string; price: number; unitCost?: number | null }>,
 ): Promise<Product[]> {
   const imported: Product[] = [];
   for (let start = 0; start < items.length; start += 100) {

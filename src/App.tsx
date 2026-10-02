@@ -67,7 +67,11 @@ function OrderCard({ order, onStatus, busy, now, isNew }: {
     <div className="order-items">{order.items.map((item, index) => <div className="order-item" key={`${item.productId}-${index}`}><span className="order-item-quantity">{item.quantity}×</span><strong className="order-item-name">{item.name}</strong><span className="order-item-price">{money(item.quantity * item.unitPrice)}</span></div>)}</div>
     <div className="order-financial"><div><span>Total</span><strong>{money(order.finalTotal)}</strong></div><small className={remaining > 0 ? 'payment-due' : 'payment-done'}>{remaining > 0 ? `Falta ${money(remaining)}` : change > 0 ? `Troco ${money(change)}` : 'Pagamento completo'}</small></div>
     {nextActions(order.status).length > 0 && <div className="card-actions">{nextActions(order.status).map(action => <button key={action.status} className={action.primary ? 'card-action-primary' : 'card-action-secondary'} disabled={busy} onClick={() => onStatus(order.id, action.status)}>{action.back && <ArrowLeft size={15} />}{action.label}{action.primary && !action.back && <ChevronRight size={15} />}</button>)}</div>}
-    {order.status === 'finished' && <p className="order-locked">Finalizado · estoque baixado</p>}
+    {order.status === 'finished' && <p className={`order-locked inventory-${order.inventoryStatus ?? 'pending'}`}>{
+      order.inventoryStatus === 'settled' ? 'Finalizado · estoque baixado'
+        : order.inventoryStatus === 'partial' ? 'Finalizado · baixa parcial: confira o dashboard'
+          : 'Finalizado · baixa pendente: confira o dashboard'
+    }</p>}
   </article>;
 }
 
@@ -84,22 +88,24 @@ function BoardColumn({ status, orders, onStatus, busyId, now, mobileActive, newO
 }
 
 function CatalogCard({ product, onSave, busy }: {
-  product: Product; onSave: (id: string, price: number) => Promise<void>; busy: boolean;
+  product: Product; onSave: (id: string, price: number, unitCost: number | null) => Promise<void>; busy: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [priceText, setPriceText] = useState(product.price.toFixed(2));
+  const [unitCostText, setUnitCostText] = useState(product.unitCost?.toFixed(2) ?? '');
   const [error, setError] = useState('');
-  useEffect(() => { if (!editing) setPriceText(product.price.toFixed(2)); }, [product.price, editing]);
+  useEffect(() => { if (!editing) { setPriceText(product.price.toFixed(2)); setUnitCostText(product.unitCost?.toFixed(2) ?? ''); } }, [product.price, product.unitCost, editing]);
   async function submit() {
-    if (!priceText.trim() || !Number.isFinite(Number(priceText.replace(',', '.'))) || Number(priceText.replace(',', '.')) < 0) {
-      setError('Preço inválido.'); return;
+    if (!priceText.trim() || !Number.isFinite(Number(priceText.replace(',', '.'))) || Number(priceText.replace(',', '.')) < 0
+      || (unitCostText.trim() && (!Number.isFinite(Number(unitCostText.replace(',', '.'))) || Number(unitCostText.replace(',', '.')) < 0))) {
+      setError('Preço de venda ou custo unitário inválido.'); return;
     }
     setError('');
-    try { await onSave(product.id, parseAmount(priceText)); setEditing(false); }
+    try { await onSave(product.id, parseAmount(priceText), unitCostText.trim() ? parseAmount(unitCostText) : null); setEditing(false); }
     catch (failure) { setError(failure instanceof Error ? failure.message : 'Não foi possível salvar.'); }
   }
   return <article className="catalog-card"><div className="catalog-card-main"><div className={`catalog-avatar ${product.isKit ? 'avatar-kit' : ''}`}>{initials(product.name)}</div><div className="catalog-info"><span className="catalog-category">{product.category} {product.isKit && <b>Kit</b>}</span><h3>{product.name}</h3><p>{product.code}</p></div></div>
-    <div className="catalog-bottom"><div><small>Preço de venda</small>{editing ? <div className="catalog-edit"><div className="money-field"><span>R$</span><input aria-label={`Preço de ${product.name}`} inputMode="decimal" value={priceText} onChange={event => setPriceText(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void submit(); if (event.key === 'Escape') setEditing(false); }} /></div><button className="button button-primary button-small" disabled={busy} onClick={submit}>Salvar</button></div> : <strong>{money(product.price)}</strong>}</div>{!editing && <button className="link-button" onClick={() => setEditing(true)}>Editar preço</button>}</div>
+    <div className="catalog-bottom"><div><small>Preço de venda</small>{editing ? <div className="catalog-edit"><div className="money-field"><span>R$</span><input aria-label={`Preço de ${product.name}`} inputMode="decimal" value={priceText} onChange={event => setPriceText(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void submit(); if (event.key === 'Escape') setEditing(false); }} /></div></div> : <strong>{money(product.price)}</strong>}</div><div><small>Custo unitário</small>{editing ? <div className="catalog-edit"><div className="money-field"><span>R$</span><input aria-label={`Custo de ${product.name}`} inputMode="decimal" placeholder="Opcional" value={unitCostText} onChange={event => setUnitCostText(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void submit(); if (event.key === 'Escape') setEditing(false); }} /></div><button className="button button-primary button-small" disabled={busy} onClick={submit}>Salvar</button></div> : <strong>{product.unitCost === null ? 'Não definido' : money(product.unitCost)}</strong>}</div>{!editing && <button className="link-button" onClick={() => setEditing(true)}>Editar valores</button>}</div>
     {product.suggestedPrice !== null && <div className="catalog-suggested"><Sparkles size={13} /> Sugerido pelo estoque: {money(product.suggestedPrice)}</div>}
     {error && <p className="form-error" role="alert">{error}</p>}
   </article>;
@@ -384,15 +390,15 @@ export default function App() {
     finally { busyIdRef.current = null; setBusyId(null); }
   }
 
-  async function savePrice(id: string, price: number) {
+  async function savePrice(id: string, price: number, unitCost: number | null) {
     busyIdRef.current = id;
     setBusyId(id);
     try {
-      const updated = await updateProductPrice(stockId, boardId, id, price);
+      const updated = await updateProductPrice(stockId, boardId, id, price, unitCost);
       setProducts(current => {
         return current.map(product => product.id === id ? updated : product);
       });
-      setToast('Preço atualizado. Pedidos antigos mantêm o preço registrado na venda.');
+      setToast('Valores atualizados. Pedidos antigos mantêm o preço e custo registrados na venda.');
     } finally { busyIdRef.current = null; setBusyId(null); }
   }
 

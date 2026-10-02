@@ -5,10 +5,10 @@ import {
   Search, TrendingDown, TrendingUp, X,
 } from 'lucide-react';
 import type {
-  AnalyticsFilters, AnalyticsOverview, OrderAnalytics, OrderAnalyticsDetail,
+  AnalyticsFilters, AnalyticsOverview, InventoryHealth, OrderAnalytics, OrderAnalyticsDetail,
   ProductAnalytics, ProductRecommendation, ProductRank,
 } from '../analytics';
-import { getAnalyticsOrderDetail, getAnalyticsOrders, getAnalyticsOverview, getAnalyticsProducts } from '../lib/analyticsApi';
+import { getAnalyticsOrderDetail, getAnalyticsOrders, getAnalyticsOverview, getAnalyticsProducts, getInventoryHealth } from '../lib/analyticsApi';
 import type { OrderBoard } from '../model';
 import { money } from '../model';
 import { supabase } from '../lib/supabase';
@@ -198,8 +198,15 @@ function AnalyticsFiltersBar({ filters, boards, onChange, targetMargin, setTarge
 
 function QualityNotice({ overview }: { overview: AnalyticsOverview }) {
   const { quality, summary } = overview;
-  if (quality.coveragePercent >= 100) return <div className="analytics-quality good"><CheckCircle2 size={18} /> Custos FIFO completos em todos os {quality.finishedOrders} pedidos finalizados.</div>;
-  return <div className="analytics-quality warn"><AlertTriangle size={18} /><div><strong>Custos incompletos em {quality.finishedOrders - quality.costCompleteOrders} pedido(s).</strong><span>Lucro e margem consideram {money(summary.costedRevenue)} de receita com custo FIFO rastreável.</span></div></div>;
+  if (quality.coveragePercent >= 100) return <div className="analytics-quality good"><CheckCircle2 size={18} /> Custos registrados em todos os {quality.finishedOrders} pedidos finalizados.</div>;
+  return <div className="analytics-quality warn"><AlertTriangle size={18} /><div><strong>Custos incompletos em {quality.finishedOrders - quality.costCompleteOrders} pedido(s).</strong><span>Lucro e margem consideram {money(summary.costedRevenue)} de receita com custo completo registrado.</span></div></div>;
+}
+
+function InventoryNotice({ health }: { health: InventoryHealth }) {
+  if (!health.finishedOrders) return null;
+  if (!health.pendingItems && !health.missingCostItems) return <div className="analytics-quality good"><CheckCircle2 size={18} /> Baixas de estoque concluídas em todos os pedidos deste período.</div>;
+  const pendingOrders = health.partialOrders + health.pendingOrders;
+  return <div className="analytics-quality warn"><AlertTriangle size={18} /><div><strong>{health.pendingItems} item(ns) de {pendingOrders} pedido(s) precisam de conferência de estoque.</strong><span>{health.manualCostItems ? `${health.manualCostItems} item(ns) usam custo unitário informado. ` : ''}{health.missingCostItems ? `${health.missingCostItems} item(ns) ainda estão sem custo.` : 'A venda foi finalizada normalmente; regularize o estoque quando possível.'}</span>{health.alerts.length ? <span className="inventory-alert-products">Pendentes: {health.alerts.map(alert => `${alert.productName} (${alert.quantity} ${alert.unit} pendentes${alert.settledQuantity ? `, ${alert.settledQuantity} baixadas` : ''})`).join(' · ')}</span> : null}</div></div>;
 }
 
 function ProductTable({ products, periodDays, targetMargin, targetCoverage, onSelect }: {
@@ -246,7 +253,7 @@ function OrderDetailModal({ stockId, order, onClose }: { stockId: string; order:
   const [error, setError] = useState('');
   useEffect(() => { let active = true; void getAnalyticsOrderDetail(stockId, order.orderId).then(value => { if (active) setDetail(value); }).catch(reason => { if (active) setError(reason instanceof Error ? reason.message : 'Não foi possível abrir o pedido.'); }); return () => { active = false; }; }, [order.orderId, stockId]);
   return <Modal title={`Pedido #${String(order.number).padStart(4, '0')}`} subtitle={`${order.boardName} · ${dateLabel(order.finishedAt, true)}`} onClose={onClose} wide>
-    {error ? <p className="form-error">{error}</p> : !detail ? <div className="analytics-modal-loading"><LoaderCircle className="spin" size={22} /> Carregando custo FIFO...</div> : <div className="order-analysis-detail"><div className="order-analysis-totals"><div><span>Receita</span><strong>{money(detail.order.revenue)}</strong></div><div><span>CMV</span><strong>{detail.order.costComplete ? money(detail.order.cost ?? 0) : '—'}</strong></div><div><span>Lucro bruto</span><strong>{detail.order.costComplete ? money(detail.order.profit ?? 0) : '—'}</strong></div><div><span>Margem</span><strong>{detail.order.costComplete ? percent(detail.order.margin) : 'Incompleta'}</strong></div></div><div className="order-analysis-lines">{detail.items.map((item, index) => <article key={`${item.productId}-${index}`}><div><span>{item.quantity}×</span><strong>{item.name}</strong><small>{item.code || 'Sem código'} · preço registrado {money(item.unitPrice)}</small></div><div className="order-analysis-line-values"><span>Receita {money(item.revenue)}</span><span>CMV {item.costComplete ? money(item.cost ?? 0) : '—'}</span><b>Lucro {item.costComplete ? money(item.profit ?? 0) : '—'}</b></div>{item.lots.length ? <small className="order-analysis-lots">Lotes FIFO: {item.lots.map(lot => `${lot.code} (${money(lot.cost)})`).join(' · ')}</small> : <small className="order-analysis-lots">Sem lote rastreável</small>}</article>)}</div></div>}
+    {error ? <p className="form-error">{error}</p> : !detail ? <div className="analytics-modal-loading"><LoaderCircle className="spin" size={22} /> Carregando custo registrado...</div> : <div className="order-analysis-detail"><div className="order-analysis-totals"><div><span>Receita</span><strong>{money(detail.order.revenue)}</strong></div><div><span>CMV</span><strong>{detail.order.costComplete ? money(detail.order.cost ?? 0) : '—'}</strong></div><div><span>Lucro bruto</span><strong>{detail.order.costComplete ? money(detail.order.profit ?? 0) : '—'}</strong></div><div><span>Margem</span><strong>{detail.order.costComplete ? percent(detail.order.margin) : 'Incompleta'}</strong></div></div><div className="order-analysis-lines">{detail.items.map((item, index) => <article key={`${item.productId}-${index}`}><div><span>{item.quantity}×</span><strong>{item.name}</strong><small>{item.code || 'Sem código'} · preço registrado {money(item.unitPrice)}</small></div><div className="order-analysis-line-values"><span>Receita {money(item.revenue)}</span><span>CMV {item.costComplete ? money(item.cost ?? 0) : '—'}</span><b>Lucro {item.costComplete ? money(item.profit ?? 0) : '—'}</b></div>{item.lots.length ? <small className="order-analysis-lots">Lotes FIFO: {item.lots.map(lot => `${lot.productName} · ${lot.code} (${money(lot.cost)})`).join(' · ')}</small> : <small className="order-analysis-lots">Sem lote rastreável</small>}</article>)}</div></div>}
   </Modal>;
 }
 
@@ -254,6 +261,7 @@ export function AnalyticsDashboard({ stockId, boards }: { stockId: string; board
   const [view, setView] = useState<AnalyticsView>('overview');
   const [filters, setFilters] = useState<AnalyticsFilters>(() => initialFilters());
   const [overview, setOverview] = useState<AnalyticsOverview | null>(null);
+  const [inventoryHealth, setInventoryHealth] = useState<InventoryHealth | null>(null);
   const [products, setProducts] = useState<ProductAnalytics[]>([]);
   const [productPeriodDays, setProductPeriodDays] = useState(0);
   const [orders, setOrders] = useState<OrderAnalytics[]>([]);
@@ -279,9 +287,10 @@ export function AnalyticsDashboard({ stockId, boards }: { stockId: string; board
       getAnalyticsOverview(stockId, queryFilters),
       getAnalyticsProducts(stockId, queryFilters, 'profit', 'desc'),
       getAnalyticsOrders(stockId, queryFilters),
-    ]).then(([nextOverview, nextProducts, nextOrders]) => {
+      getInventoryHealth(stockId, queryFilters),
+    ]).then(([nextOverview, nextProducts, nextOrders, nextInventoryHealth]) => {
       if (!active) return;
-      setOverview(nextOverview); setProducts(nextProducts.rows); setProductPeriodDays(nextProducts.periodDays); setOrders(nextOrders.rows); setLastRefresh(new Date());
+      setOverview(nextOverview); setInventoryHealth(nextInventoryHealth); setProducts(nextProducts.rows); setProductPeriodDays(nextProducts.periodDays); setOrders(nextOrders.rows); setLastRefresh(new Date());
     }).catch(reason => { if (active) setError(reason instanceof Error ? reason.message : 'Não foi possível consultar as análises.'); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
@@ -311,6 +320,7 @@ export function AnalyticsDashboard({ stockId, boards }: { stockId: string; board
     {lastRefresh && <p className="analytics-refreshed">Atualizado às {lastRefresh.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}. Atualização automática ativa.</p>}
     {loading && !overview ? <div className="loading-panel analytics-loading"><LoaderCircle className="spin" size={25} /><strong>Calculando receita, custo FIFO e lucro...</strong></div> : error ? <div className="error-panel analytics-error"><strong>Não foi possível carregar o dashboard.</strong><p>{error}</p><button className="button button-primary" onClick={() => setRefreshKey(value => value + 1)}><RefreshCw size={16} /> Tentar novamente</button></div> : overview ? <>
       <QualityNotice overview={overview} />
+      {inventoryHealth && <InventoryNotice health={inventoryHealth} />}
       {view === 'overview' && <><div className="analytics-metrics"><MetricCard label="Pedidos finalizados" value={overview.summary.orders} previous={overview.previous.orders} icon={ClipboardList} /><MetricCard label="Receita realizada" value={overview.summary.revenue} previous={overview.previous.revenue} moneyValue icon={CircleDollarSign} /><MetricCard label="CMV FIFO" value={overview.summary.cost} previous={overview.previous.cost} moneyValue detail={overview.quality.coveragePercent < 100 ? `${percent(overview.quality.coveragePercent)} com custo completo` : undefined} icon={Box} /><MetricCard label="Lucro bruto" value={overview.summary.profit} previous={overview.previous.profit} moneyValue icon={TrendingUp} /><MetricCard label="Margem bruta" value={overview.summary.margin} previous={overview.previous.margin} detail={`Markup ${percent(overview.summary.markup)}`} icon={TrendingDown} /><MetricCard label="Ticket médio" value={overview.summary.averageTicket} previous={overview.previous.averageTicket} moneyValue detail={overview.summary.openPotential ? `${money(overview.summary.openPotential)} em aberto` : 'Nenhum pedido aberto no período'} icon={Package} /></div>
         <div className="analytics-grid-main"><section className="analytics-card analytics-trend-card"><div className="analytics-card-heading"><div><span>RESULTADO NO TEMPO</span><h3>Receita, CMV e lucro por dia</h3></div><small>{filters.boardIds.length ? `${filters.boardIds.length} kanban(s)` : 'Todos os kanbans'}</small></div><FinancialTrend points={overview.series} /></section><section className="analytics-card analytics-insights-card"><div className="analytics-card-heading"><div><span>PRÓXIMAS AÇÕES</span><h3>O que merece atenção</h3></div></div>{insights.length ? <div className="analytics-insights">{insights.map(({ product, insight }) => <button key={product.productId} className={`analytics-insight ${insight.kind}`} onClick={() => setSelectedProduct(product)}><span>{insight.kind === 'produce' ? <Factory size={17} /> : insight.kind === 'avoid-stockout' ? <AlertTriangle size={17} /> : insight.kind === 'review-price' ? <CircleDollarSign size={17} /> : <TrendingUp size={17} />}</span><div><b>{insight.title} · {product.name}</b><small>{insight.reason}</small></div></button>)}</div> : <div className="analytics-empty-chart">Não há alertas com dados suficientes neste período.</div>}</section></div>
         <div className="analytics-grid-secondary"><section className="analytics-card analytics-boards-card"><div className="analytics-card-heading"><div><span>COMPARAÇÃO</span><h3>Resultado por kanban</h3></div></div><div className="analytics-board-list">{overview.boards.length ? overview.boards.map(board => <button key={board.id} onClick={() => setFilters(current => ({ ...current, boardIds: [board.id] }))}><div><strong>{board.name}</strong><small>{board.orders} pedido(s) · margem {percent(board.margin)}</small></div><span>{money(board.profit)}</span><i style={{ width: `${Math.min(100, board.revenue / Math.max(1, ...overview.boards.map(item => item.revenue)) * 100)}%` }} /></button>) : <p>Nenhum kanban com pedidos finalizados.</p>}</div></section><section className="analytics-card analytics-pareto-card"><div className="analytics-card-heading"><div><span>CONTRIBUIÇÃO</span><h3>Pareto do lucro</h3></div><small>Acumulado</small></div>{overview.pareto.length ? <div className="analytics-pareto">{overview.pareto.slice(0, 7).map(point => <div key={point.productId}><div><span>{point.name}</span><b>{money(point.profit)}</b></div><i><em style={{ width: `${Math.min(100, point.accumulatedPercent)}%` }} /></i><small>{percent(point.accumulatedPercent)}</small></div>)}</div> : <div className="analytics-empty-chart">Sem lucro rastreável no período.</div>}</section></div>

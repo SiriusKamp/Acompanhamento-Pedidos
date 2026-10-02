@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test": "node tests/orders-monolith.test.mjs",
+    "test": "node tests/orders-monolith.test.mjs && node tests/orders-partial-settlement.test.mjs && node tests/recipe-capacity-discrete.test.mjs",
+    "test:partial-settlement": "node tests/orders-partial-settlement.test.mjs",
+    "test:capacity": "node tests/recipe-capacity-discrete.test.mjs",
     "test:stock": "node tests/stock-integration.test.mjs"
   },
   "dependencies": {

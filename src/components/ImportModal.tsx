@@ -6,7 +6,7 @@ import { money, parseAmount } from '../model';
 import { getStockProducts, importProducts, type StockProduct } from '../lib/pedidosApi';
 import { Modal } from './Modal';
 
-type Draft = StockProduct & { selected: boolean; priceText: string };
+type Draft = StockProduct & { selected: boolean; priceText: string; unitCostText: string };
 
 export function ImportModal({ stockId, boardId, stockName, currentProducts, presets, onClose, onImported, onSavePreset }: {
   stockId: string; boardId: string; stockName: string; currentProducts: Product[]; presets: ItemPreset[];
@@ -27,7 +27,8 @@ export function ImportModal({ stockId, boardId, stockName, currentProducts, pres
       setDraft(products.map(product => {
         const existing = currentProducts.find(item => item.sourceProductId === product.sourceProductId);
         return { ...product, selected: !!existing,
-          priceText: (existing?.price ?? product.suggestedPrice ?? 0).toFixed(2) };
+          priceText: (existing?.price ?? product.suggestedPrice ?? 0).toFixed(2),
+          unitCostText: existing?.unitCost === null || existing?.unitCost === undefined ? '' : existing.unitCost.toFixed(2) };
       }));
     }).catch(failure => {
       if (active) setError(failure instanceof Error ? failure.message : 'Não foi possível buscar os produtos.');
@@ -78,13 +79,16 @@ export function ImportModal({ stockId, boardId, stockName, currentProducts, pres
     if (!selected.length) { setError('Selecione pelo menos um produto.'); return; }
     if (selected.some(item => !item.priceText.trim()
       || !Number.isFinite(Number(item.priceText.replace(',', '.')))
-      || Number(item.priceText.replace(',', '.')) < 0)) {
-      setError('Confira os preços dos itens selecionados.'); return;
+      || Number(item.priceText.replace(',', '.')) < 0
+      || (item.unitCostText.trim() && (!Number.isFinite(Number(item.unitCostText.replace(',', '.')))
+        || Number(item.unitCostText.replace(',', '.')) < 0)))) {
+      setError('Confira os preços de venda e custos dos itens selecionados.'); return;
     }
     setBusy(true); setError('');
     try {
       const products = await importProducts(stockId, boardId, selected.map(item => ({
         sourceProductId: item.sourceProductId, price: parseAmount(item.priceText),
+        unitCost: item.unitCostText.trim() ? parseAmount(item.unitCostText) : null,
       })));
       onImported(products); onClose();
     } catch (failure) {
@@ -92,7 +96,7 @@ export function ImportModal({ stockId, boardId, stockName, currentProducts, pres
     } finally { setBusy(false); }
   }
 
-  return <Modal title="Importar produtos" subtitle={`Estoque ${stockName}: escolha os itens e defina os preços de venda.`}
+  return <Modal title="Importar produtos" subtitle={`Estoque ${stockName}: escolha os itens, o preço de venda e, se necessário, o custo unitário manual.`}
     onClose={onClose} wide>
     <div className="import-body">
       {busy && !draft.length && <div className="modal-empty compact"><CloudDownload size={27} /><p>Buscando produtos e kits ativos...</p></div>}
@@ -127,6 +131,12 @@ export function ImportModal({ stockId, boardId, stockName, currentProducts, pres
               onChange={event => setDraft(items => items.map(row => row.sourceProductId === item.sourceProductId
                 ? { ...row, priceText: event.target.value } : row))} /></div>
             <small>{item.suggestedPrice !== null ? `Sugerido: ${money(item.suggestedPrice)}` : 'Sem preço sugerido'}</small>
+          </div>
+          <div className="import-price"><label>Custo unitário</label><div className="money-field"><span>R$</span>
+            <input inputMode="decimal" aria-label={`Custo de ${item.name}`} placeholder="Opcional" value={item.unitCostText}
+              onChange={event => setDraft(items => items.map(row => row.sourceProductId === item.sourceProductId
+                ? { ...row, unitCostText: event.target.value } : row))} /></div>
+            <small>Usado se faltar custo FIFO</small>
           </div>
         </div>)}
           {!filtered.length && <p className="list-empty">Nenhum produto corresponde à busca.</p>}

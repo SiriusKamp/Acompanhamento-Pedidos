@@ -10,6 +10,7 @@ export interface Product {
   isKit: boolean;
   suggestedPrice: number | null;
   price: number;
+  unitCost: number | null;
   importedAt: string;
 }
 
@@ -32,6 +33,7 @@ export interface Order {
   finalTotal: number;
   paid: number;
   status: OrderStatus;
+  inventoryStatus?: 'not_processed' | 'settled' | 'partial' | 'pending';
   createdAt: string;
   updatedAt: string;
 }
