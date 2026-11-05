@@ -40,12 +40,15 @@ preserva o frontend HTTP anterior e seu contrato `API_CONTRACT.md`.
    para permitir que um kanban importe itens de todos os estoques da conta.
    Cada linha do pedido guarda o estoque de origem; ao finalizar, a baixa e o
    custo FIFO são registrados nesse estoque.
-7. Copie `.env.example` para `.env.local` e use a **mesma**
+7. Execute [supabase/migration_order_import_product_id_ambiguity_fix.sql](supabase/migration_order_import_product_id_ambiguity_fix.sql)
+   para manter a variável da função de importação com nome distinto da coluna
+   `product_id` e evitar erro de ambiguidade.
+8. Copie `.env.example` para `.env.local` e use a **mesma**
    `VITE_SUPABASE_URL` e chave pública/anon do monólito Estoque. A
    configuração local deste checkout já foi copiada da instalação do Estoque.
    O arquivo `.env.local` é ignorado pelo Git. Nunca use a senha do Postgres
    nem uma chave `service_role` em `VITE_`.
-8. Instale as dependências e inicie:
+9. Instale as dependências e inicie:
 
 ```bash
 pnpm install

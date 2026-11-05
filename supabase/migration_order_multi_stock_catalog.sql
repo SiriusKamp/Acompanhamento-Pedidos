@@ -41,7 +41,7 @@ CREATE OR REPLACE FUNCTION public.orders_import_catalog_board(
 )
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
 DECLARE
-  entry jsonb; product_id uuid; source_stock_id uuid; catalog_id uuid;
+  entry jsonb; v_product_id uuid; source_stock_id uuid; catalog_id uuid;
   price_value numeric; unit_cost_value numeric; imported uuid[]:='{}';
   seen uuid[]:='{}'; result jsonb;
 BEGIN
@@ -59,29 +59,29 @@ BEGIN
       OR nullif(entry->>'sourceProductId','') IS NULL THEN
       RAISE EXCEPTION 'Produto ou preço inválido.' USING ERRCODE='22023';
     END IF;
-    product_id:=(entry->>'sourceProductId')::uuid;
+    v_product_id:=(entry->>'sourceProductId')::uuid;
     price_value:=(entry->>'price')::numeric;
     unit_cost_value:=CASE WHEN jsonb_typeof(entry->'unitCost')='number'
       THEN (entry->>'unitCost')::numeric ELSE NULL END;
-    SELECT p.stock_id INTO source_stock_id FROM public.products p WHERE p.id=product_id;
+    SELECT p.stock_id INTO source_stock_id FROM public.products p WHERE p.id=v_product_id;
     IF source_stock_id IS NULL THEN RAISE EXCEPTION 'Produto não encontrado.' USING ERRCODE='22023'; END IF;
     IF nullif(entry->>'sourceStockId','') IS NOT NULL
       AND (entry->>'sourceStockId')::uuid IS DISTINCT FROM source_stock_id THEN
       RAISE EXCEPTION 'O produto não pertence ao estoque de origem informado.' USING ERRCODE='22023';
     END IF;
     PERFORM public.assert_stock(source_stock_id);
-    IF product_id=ANY(seen) OR price_value<0 OR price_value>99999999.99
+    IF v_product_id=ANY(seen) OR price_value<0 OR price_value>99999999.99
       OR price_value<>round(price_value,2) OR (unit_cost_value IS NOT NULL
         AND (unit_cost_value<0 OR unit_cost_value>99999999.99 OR unit_cost_value<>round(unit_cost_value,2))) THEN
       RAISE EXCEPTION 'Produto, preço de venda ou custo unitário inválido.' USING ERRCODE='22023';
     END IF;
-    IF NOT EXISTS (SELECT 1 FROM public.products p WHERE p.id=product_id
+    IF NOT EXISTS (SELECT 1 FROM public.products p WHERE p.id=v_product_id
       AND p.stock_id=source_stock_id AND p.active) THEN
       RAISE EXCEPTION 'Produto não encontrado ou inativo no estoque de origem.' USING ERRCODE='22023';
     END IF;
-    seen:=array_append(seen,product_id);
+    seen:=array_append(seen,v_product_id);
     INSERT INTO public.order_catalog_items(stock_id,board_id,product_id,price,unit_cost)
-      VALUES(p_stock_id,p_board_id,product_id,price_value,unit_cost_value)
+      VALUES(p_stock_id,p_board_id,v_product_id,price_value,unit_cost_value)
       ON CONFLICT(board_id,product_id) DO UPDATE SET price=excluded.price,
         unit_cost=coalesce(excluded.unit_cost,public.order_catalog_items.unit_cost),imported_at=now()
       RETURNING id INTO catalog_id;

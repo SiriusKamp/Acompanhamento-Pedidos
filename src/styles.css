@@ -263,3 +263,11 @@
 .order-stock-origin{display:block;margin-top:2px;color:#9298a8;font-size:9px;font-weight:600}
 .catalog-stock-origin{display:block;margin-top:4px;color:#7b6ce1;font-size:10px;font-weight:700}
 @media(max-width:760px){.import-stock-filter{min-width:0;max-width:135px;font-size:10px}.import-list-head{flex-wrap:wrap}.import-list-head .search-field{flex:1 1 100%}}
+/* Keep native select menus readable and visually aligned in each theme. */
+:root{color-scheme:light;--select-option-bg:#fff;--select-option-color:#363b4e;--select-option-active-bg:#eeecff;--select-option-active-color:#363b4e}
+:root[data-theme="dark"]{--select-option-bg:var(--field);--select-option-color:var(--text);--select-option-active-bg:var(--accent-bg);--select-option-active-color:var(--accent)}
+:root[data-theme="neon"]{--select-option-bg:var(--field);--select-option-color:var(--text);--select-option-active-bg:var(--accent-bg);--select-option-active-color:var(--accent)}
+select{color-scheme:inherit}
+select option{background-color:var(--select-option-bg);color:var(--select-option-color)}
+select option:checked{background-color:var(--select-option-active-bg);color:var(--select-option-active-color)}
+[data-theme="dark"] select,[data-theme="neon"] select{background-color:var(--field);border-color:var(--border);color:var(--text)}
