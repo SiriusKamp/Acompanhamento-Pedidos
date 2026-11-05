@@ -43,12 +43,15 @@ preserva o frontend HTTP anterior e seu contrato `API_CONTRACT.md`.
 7. Execute [supabase/migration_order_import_product_id_ambiguity_fix.sql](supabase/migration_order_import_product_id_ambiguity_fix.sql)
    para manter a variável da função de importação com nome distinto da coluna
    `product_id` e evitar erro de ambiguidade.
-8. Copie `.env.example` para `.env.local` e use a **mesma**
+8. Execute [supabase/migration_order_preset_id_ambiguity_fix.sql](supabase/migration_order_preset_id_ambiguity_fix.sql)
+   para evitar conflito entre a variável local `v_preset_id` e a coluna
+   `preset_id` ao salvar presets.
+9. Copie `.env.example` para `.env.local` e use a **mesma**
    `VITE_SUPABASE_URL` e chave pública/anon do monólito Estoque. A
    configuração local deste checkout já foi copiada da instalação do Estoque.
    O arquivo `.env.local` é ignorado pelo Git. Nunca use a senha do Postgres
    nem uma chave `service_role` em `VITE_`.
-9. Instale as dependências e inicie:
+10. Instale as dependências e inicie:
 
 ```bash
 pnpm install

@@ -271,3 +271,6 @@ select{color-scheme:inherit}
 select option{background-color:var(--select-option-bg);color:var(--select-option-color)}
 select option:checked{background-color:var(--select-option-active-bg);color:var(--select-option-active-color)}
 [data-theme="dark"] select,[data-theme="neon"] select{background-color:var(--field);border-color:var(--border);color:var(--text)}
+[data-theme="light"] select option:hover,[data-theme="light"] select option:focus,[data-theme="light"] select option:checked,
+[data-theme="dark"] select option:hover,[data-theme="dark"] select option:focus,[data-theme="dark"] select option:checked,
+[data-theme="neon"] select option:hover,[data-theme="neon"] select option:focus,[data-theme="neon"] select option:checked{background-color:var(--select-option-active-bg)!important;color:var(--select-option-active-color)!important}
