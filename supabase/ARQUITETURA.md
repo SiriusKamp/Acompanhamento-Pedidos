@@ -29,3 +29,6 @@ As tabelas físicas preservam os nomes usados pelas RPCs existentes. Para leitur
 Ao finalizar, cada item gera uma liquidação em `order_inventory_settlements`. A baixa consome o saldo FIFO disponível até zero, aponta para sua operação e salva o custo real; a diferença fica registrada como quantidade pendente. O estado da liquidação é `settled`, `partial` ou `pending`. O pedido sempre finaliza. Quando houver custo manual, ele cobre a parte sem estoque e o retrato informa origem `mixed`; sem custo manual, o dashboard sinaliza a margem como incompleta. Custos manuais ficam congelados no item do pedido.
 
 No modo monólito pessoal, `migration_monolith_no_rls.sql` desativa RLS nas tabelas públicas. As RPCs continuam centralizando as validações operacionais de Kanban, produto, status e consistência do estoque.
+
+
+Para o modelo completo dos domínios de estoque e pedidos, veja [Entidades e relacionamentos](ENTIDADES_E_RELACIONAMENTOS.md).
