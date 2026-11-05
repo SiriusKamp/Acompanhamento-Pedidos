@@ -1,49 +1,60 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Check, CloudDownload, Package, Search, Sparkles } from 'lucide-react';
+import { Check, CloudDownload, Package, Search, Sparkles, Trash2 } from 'lucide-react';
 import type { Product } from '../model';
 import type { ItemPreset } from '../model';
 import { money, parseAmount } from '../model';
-import { getStockProducts, importProducts, type StockProduct } from '../lib/pedidosApi';
+import { getStockProducts, importProducts, type Stock, type StockProduct } from '../lib/pedidosApi';
 import { Modal } from './Modal';
 
 type Draft = StockProduct & { selected: boolean; priceText: string; unitCostText: string };
 
-export function ImportModal({ stockId, boardId, stockName, currentProducts, presets, onClose, onImported, onSavePreset }: {
-  stockId: string; boardId: string; stockName: string; currentProducts: Product[]; presets: ItemPreset[];
+export function ImportModal({ stockId, boardId, stockName, stocks, currentProducts, presets, onClose, onImported, onSavePreset, onDeletePreset }: {
+  stockId: string; boardId: string; stockName: string; stocks: Stock[]; currentProducts: Product[]; presets: ItemPreset[];
   onClose: () => void; onImported: (products: Product[]) => void;
   onSavePreset: (name: string, items: ItemPreset['items']) => Promise<ItemPreset>;
+  onDeletePreset: (presetId: string) => Promise<void>;
 }) {
   const [draft, setDraft] = useState<Draft[]>([]);
   const [search, setSearch] = useState('');
+  const [stockFilter, setStockFilter] = useState('all');
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
   const [presetName, setPresetName] = useState('');
+  const [activePresetId, setActivePresetId] = useState('');
   const [presetBusy, setPresetBusy] = useState(false);
 
   useEffect(() => {
     let active = true;
-    void getStockProducts(stockId).then(products => {
+    void Promise.all(stocks.map(stock => getStockProducts(stock.id, stock.name))).then(productGroups => {
       if (!active) return;
-      setDraft(products.map(product => {
-        const existing = currentProducts.find(item => item.sourceProductId === product.sourceProductId);
-        return { ...product, selected: !!existing,
-          priceText: (existing?.price ?? product.suggestedPrice ?? 0).toFixed(2),
-          unitCostText: existing?.unitCost === null || existing?.unitCost === undefined ? '' : existing.unitCost.toFixed(2) };
-      }));
+      const products = productGroups.flat();
+      setDraft(previous => {
+        const previousById = new Map(previous.map(item => [item.sourceProductId, item]));
+        return products.map(product => {
+          const saved = previousById.get(product.sourceProductId);
+          const existing = currentProducts.find(item => item.sourceProductId === product.sourceProductId
+            && item.sourceStockId === product.sourceStockId);
+          return { ...product, selected: saved?.selected ?? !!existing,
+            priceText: saved?.priceText ?? (existing?.price ?? product.suggestedPrice ?? 0).toFixed(2),
+            unitCostText: saved?.unitCostText ?? (existing?.unitCost === null || existing?.unitCost === undefined ? '' : existing.unitCost.toFixed(2)) };
+        });
+      });
     }).catch(failure => {
       if (active) setError(failure instanceof Error ? failure.message : 'Não foi possível buscar os produtos.');
     }).finally(() => { if (active) setBusy(false); });
     return () => { active = false; };
-  }, [stockId, boardId, currentProducts]);
+  }, [stocks, boardId, currentProducts]);
 
   const filtered = useMemo(() => {
     const needle = search.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-    return draft.filter(item => `${item.name} ${item.code} ${item.category}`.normalize('NFD')
+    return draft.filter(item => (stockFilter === 'all' || item.sourceStockId === stockFilter)
+      && `${item.name} ${item.code} ${item.category} ${item.sourceStockName}`.normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '').toLowerCase().includes(needle));
-  }, [draft, search]);
+  }, [draft, search, stockFilter]);
   const selectedCount = draft.filter(item => item.selected).length;
 
   function applyPreset(presetId: string) {
+    setActivePresetId(presetId);
     const preset = presets.find(item => item.id === presetId);
     const chosen = new Map((preset?.items ?? []).map(item => [item.sourceProductId, item.price]));
     setDraft(items => items.map(item => ({
@@ -52,6 +63,18 @@ export function ImportModal({ stockId, boardId, stockName, currentProducts, pres
       priceText: chosen.has(item.sourceProductId)
         ? chosen.get(item.sourceProductId)!.toFixed(2) : item.priceText,
     })));
+  }
+
+  async function deletePreset() {
+    const selected = presets.find(preset => preset.id === activePresetId);
+    if (!selected || !window.confirm(`Excluir o preset “${selected.name}”?`)) return;
+    setPresetBusy(true); setError('');
+    try {
+      await onDeletePreset(selected.id);
+      setActivePresetId(''); setPresetName('');
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : 'Não foi possível excluir o preset.');
+    } finally { setPresetBusy(false); }
   }
 
   async function savePreset() {
@@ -65,10 +88,10 @@ export function ImportModal({ stockId, boardId, stockName, currentProducts, pres
     }
     setPresetBusy(true); setError('');
     try {
-      await onSavePreset(presetName, selected.map(item => ({
-        sourceProductId: item.sourceProductId, price: parseAmount(item.priceText),
+      const saved = await onSavePreset(presetName, selected.map(item => ({
+        sourceProductId: item.sourceProductId, sourceStockId: item.sourceStockId, price: parseAmount(item.priceText),
       })));
-      setPresetName('');
+      setActivePresetId(saved.id); setPresetName(saved.name);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : 'Não foi possível salvar o preset.');
     } finally { setPresetBusy(false); }
@@ -87,7 +110,7 @@ export function ImportModal({ stockId, boardId, stockName, currentProducts, pres
     setBusy(true); setError('');
     try {
       const products = await importProducts(stockId, boardId, selected.map(item => ({
-        sourceProductId: item.sourceProductId, price: parseAmount(item.priceText),
+        sourceProductId: item.sourceProductId, sourceStockId: item.sourceStockId, price: parseAmount(item.priceText),
         unitCost: item.unitCostText.trim() ? parseAmount(item.unitCostText) : null,
       })));
       onImported(products); onClose();
@@ -96,7 +119,7 @@ export function ImportModal({ stockId, boardId, stockName, currentProducts, pres
     } finally { setBusy(false); }
   }
 
-  return <Modal title="Importar produtos" subtitle={`Estoque ${stockName}: escolha os itens, o preço de venda e, se necessário, o custo unitário manual.`}
+  return <Modal title="Importar produtos" subtitle={`Kanban ${stockName}: pesquise e selecione itens de todos os seus estoques.`}
     onClose={onClose} wide>
     <div className="import-body">
       {busy && !draft.length && <div className="modal-empty compact"><CloudDownload size={27} /><p>Buscando produtos e kits ativos...</p></div>}
@@ -104,15 +127,22 @@ export function ImportModal({ stockId, boardId, stockName, currentProducts, pres
       {!!draft.length && <>
         <div className="import-list-head"><label className="search-field"><Search size={17} />
           <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Filtrar produtos" />
-        </label><button className="text-back" onClick={() => setDraft(items => items.map(item =>
+        </label><select className="import-stock-filter" aria-label="Filtrar itens por estoque" value={stockFilter} onChange={event => setStockFilter(event.target.value)}>
+          <option value="all">Todos os estoques</option>{stocks.map(stock => <option key={stock.id} value={stock.id}>{stock.name}</option>)}
+        </select><button className="text-back" onClick={() => setDraft(items => items.map(item =>
           ({ ...item, selected: selectedCount !== items.length })))}>
           {selectedCount === draft.length ? 'Desmarcar todos' : 'Selecionar todos'}
         </button></div>
         <div className="preset-tools">
-          <label className="field"><span>Usar preset salvo</span><select defaultValue="" onChange={event => applyPreset(event.target.value)}>
-            <option value="">Selecione um preset para marcar os itens</option>
-            {presets.map(preset => <option key={preset.id} value={preset.id}>{preset.name}</option>)}
-          </select></label>
+          <div className="preset-select-row"><label className="field"><span>Usar preset salvo</span><select value={activePresetId} onChange={event => applyPreset(event.target.value)}>
+              <option value="">Selecione um preset para marcar os itens</option>
+              {presets.map(preset => <option key={preset.id} value={preset.id}>{preset.name}</option>)}
+            </select></label>
+            <button type="button" className="icon-button preset-delete" aria-label="Excluir preset selecionado"
+              title="Excluir preset selecionado" onClick={() => void deletePreset()} disabled={!activePresetId || presetBusy}>
+              <Trash2 size={17} />
+            </button>
+          </div>
           <div className="preset-save"><label className="field"><span>Salvar seleção atual</span><input value={presetName}
             onChange={event => setPresetName(event.target.value)} placeholder="Ex.: Cardápio de sexta" maxLength={80} /></label>
             <button className="button button-secondary" onClick={() => void savePreset()} disabled={presetBusy || !selectedCount}>
@@ -125,7 +155,7 @@ export function ImportModal({ stockId, boardId, stockName, currentProducts, pres
             onChange={event => setDraft(items => items.map(row => row.sourceProductId === item.sourceProductId
               ? { ...row, selected: event.target.checked } : row))} />
             <span className="check-ui"><Check size={13} /></span></label>
-          <div className="import-row-info"><strong>{item.name}</strong><span>{item.category} · {item.code}</span></div>
+          <div className="import-row-info"><strong>{item.name}</strong><span>{item.category} · {item.code}</span><small className="import-stock-name">{item.sourceStockName}</small></div>
           <div className="import-price"><label>Preço de venda</label><div className="money-field"><span>R$</span>
             <input inputMode="decimal" aria-label={`Preço de ${item.name}`} value={item.priceText}
               onChange={event => setDraft(items => items.map(row => row.sourceProductId === item.sourceProductId

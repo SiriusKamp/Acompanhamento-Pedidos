@@ -214,6 +214,11 @@
 .new-board-form .button{min-height:46px}
 .preset-tools{display:grid;grid-template-columns:minmax(180px,.8fr) minmax(300px,1.2fr);gap:14px;padding:14px;margin:12px 0;border:1px solid #eceef4;border-radius:12px;background:#fafaff}
 .preset-tools select,.preset-tools input{height:38px}
+.preset-select-row{display:flex;align-items:end;gap:8px;min-width:0}
+.preset-select-row .field{flex:1}
+.preset-delete{width:38px;height:38px;flex:none;border:1px solid #f0dfe3;background:#fff7f8;color:#bd5364}
+.preset-delete:hover:not(:disabled){background:#ffedf0}
+.preset-delete:disabled{opacity:.45;cursor:not-allowed}
 .preset-save{display:flex;align-items:end;gap:9px}
 .preset-save .field{flex:1}
 .preset-save .button{min-height:38px}
@@ -252,3 +257,9 @@
 
 @media(max-width:1250px){.analytics-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}.analytics-grid-main{grid-template-columns:1fr}.analytics-insights{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:760px){.analytics-page{gap:13px}.analytics-hero{min-height:142px;padding:22px 19px;border-radius:15px}.analytics-hero h1{font-size:27px}.analytics-hero-icon{display:none}.analytics-filters{display:grid;grid-template-columns:1fr 1fr;padding:11px}.analytics-filter select,.analytics-filter input,.analytics-board-filter{min-width:0;width:100%}.analytics-board-filter summary{height:43px}.analytics-board-filter[open]>div{position:fixed;left:15px;right:15px;top:auto;bottom:20px;min-width:0;max-height:60vh;overflow:auto}.analytics-tabs{overflow:auto;white-space:nowrap}.analytics-tabs button{flex:none;min-height:41px}.analytics-tabs .analytics-refresh{margin-left:0}.analytics-refreshed{text-align:left;margin-top:-8px}.analytics-quality{align-items:start}.analytics-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.analytics-metric-card{padding:12px}.analytics-metric-card strong{font-size:17px}.analytics-grid-secondary,.analytics-ranking-grid{grid-template-columns:1fr}.analytics-insights{grid-template-columns:1fr}.analytics-card,.analytics-quadrant-card{padding:15px}.analytics-card-heading h3{font-size:15px}.analytics-trend-card{padding:15px 10px}.analytics-products-toolbar{align-items:stretch}.analytics-products-toolbar .search-field{min-width:0;width:100%}.analytics-products-toolbar>span{margin:0}.analytics-quadrant{height:270px}.product-focus{right:12px;bottom:12px}.order-analysis-detail{padding:14px}.order-analysis-totals{grid-template-columns:repeat(2,1fr)}.analytics-table{min-width:780px}.analytics-legend{gap:8px}.analytics-legend span{font-size:9px}}
+/* Multi-stock source labels in the import picker and order cards. */
+.import-stock-filter{min-width:145px;height:40px;padding:0 10px;border:1px solid #e5e8f0;border-radius:10px;background:#fff;color:#51576a;font-size:12px}
+.import-stock-name{display:block;margin-top:3px;color:#7b6ce1;font-size:10px;font-weight:700}
+.order-stock-origin{display:block;margin-top:2px;color:#9298a8;font-size:9px;font-weight:600}
+.catalog-stock-origin{display:block;margin-top:4px;color:#7b6ce1;font-size:10px;font-weight:700}
+@media(max-width:760px){.import-stock-filter{min-width:0;max-width:135px;font-size:10px}.import-list-head{flex-wrap:wrap}.import-list-head .search-field{flex:1 1 100%}}

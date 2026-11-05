@@ -4,6 +4,7 @@ export interface Product {
   id: string;
   sourceProductId: string | null;
   sourceStockId: string | null;
+  sourceStockName?: string | null;
   name: string;
   code: string;
   category: string;
@@ -19,6 +20,7 @@ export interface OrderItem {
   name: string;
   quantity: number;
   unitPrice: number;
+  sourceStockName?: string | null;
 }
 
 export interface Order {
@@ -48,7 +50,7 @@ export interface OrderBoard {
 export interface ItemPreset {
   id: string;
   name: string;
-  items: Array<{ sourceProductId: string; price: number }>;
+  items: Array<{ sourceProductId: string; sourceStockId?: string; price: number }>;
 }
 
 export const statusLabels: Record<OrderStatus, string> = {

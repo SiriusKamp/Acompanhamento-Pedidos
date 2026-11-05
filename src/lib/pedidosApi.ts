@@ -4,6 +4,8 @@ import { supabase } from './supabase';
 export interface Stock { id: string; name: string }
 export interface StockProduct {
   sourceProductId: string;
+  sourceStockId: string;
+  sourceStockName: string;
   name: string;
   code: string;
   category: string;
@@ -28,8 +30,8 @@ function result<T>(data: unknown, error: { message: string; code?: string } | nu
   return data as T;
 }
 
-export async function getStocks(): Promise<Stock[]> {
-  const { data, error } = await supabase.from('stocks').select('id,name').order('name');
+export async function getStocks(userId: string): Promise<Stock[]> {
+  const { data, error } = await supabase.from('stocks').select('id,name').eq('user_id', userId).order('name');
   return result<Stock[]>(data ?? [], error);
 }
 
@@ -61,6 +63,13 @@ export async function saveItemPreset(
     p_stock_id: stockId, p_name: name.trim(), p_items: items,
   });
   return result<ItemPreset>(data, error);
+}
+
+export async function deleteItemPreset(stockId: string, presetId: string): Promise<void> {
+  const { data, error } = await supabase.rpc('order_presets_delete', {
+    p_stock_id: stockId, p_preset_id: presetId,
+  });
+  result<boolean>(data, error);
 }
 
 export async function createStock(userId: string, name: string): Promise<Stock> {
@@ -110,7 +119,7 @@ export async function changeOrderStatus(stockId: string, boardId: string, id: st
   return result<Order>(data, error);
 }
 
-export async function getStockProducts(stockId: string): Promise<StockProduct[]> {
+export async function getStockProducts(stockId: string, stockName: string): Promise<StockProduct[]> {
   const rows: StockProduct[] = [];
   for (let page = 0; ; page++) {
     const { data, error } = await supabase.from('product_catalog')
@@ -123,6 +132,7 @@ export async function getStockProducts(stockId: string): Promise<StockProduct[]>
     }>>(data ?? [], error);
     rows.push(...batch.map(row => ({
       sourceProductId: row.id, name: row.name, code: row.sku,
+      sourceStockId: stockId, sourceStockName: stockName,
       category: row.type_name ?? 'Sem categoria', isKit: row.is_kit,
       suggestedPrice: row.suggested_sale_price ?? row.next_sale,
     })));
@@ -131,7 +141,7 @@ export async function getStockProducts(stockId: string): Promise<StockProduct[]>
 }
 
 export async function importProducts(
-  stockId: string, boardId: string, items: Array<{ sourceProductId: string; price: number; unitCost?: number | null }>,
+  stockId: string, boardId: string, items: Array<{ sourceProductId: string; sourceStockId: string; price: number; unitCost?: number | null }>,
 ): Promise<Product[]> {
   const imported: Product[] = [];
   for (let start = 0; start < items.length; start += 100) {

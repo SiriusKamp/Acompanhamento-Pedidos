@@ -20,6 +20,8 @@ preserva o frontend HTTP anterior e seu contrato `API_CONTRACT.md`.
    no mesmo banco. Ela cria o kanban padrão **Geral**, transfere para ele os
    pedidos e itens já existentes e instala o catálogo separado por kanban,
    presets e atualizações Realtime.
+   Execute também [supabase/migration_order_preset_delete.sql](supabase/migration_order_preset_delete.sql)
+   para habilitar a exclusão segura de presets na tela de importação.
 3. Para habilitar custo, lucro e recomendações por pedido, execute também
    [supabase/migration_order_analytics.sql](supabase/migration_order_analytics.sql).
    Ela vincula pedidos finalizados aos movimentos FIFO e cria as consultas
@@ -34,12 +36,16 @@ preserva o frontend HTTP anterior e seu contrato `API_CONTRACT.md`.
    para instalar a correção incremental de baixa parcial e snapshots em bancos
    existentes. Ela também pode ser executada após a migration principal em uma
    instalação nova.
-6. Copie `.env.example` para `.env.local` e use a **mesma**
+6. Execute [supabase/migration_order_multi_stock_catalog.sql](supabase/migration_order_multi_stock_catalog.sql)
+   para permitir que um kanban importe itens de todos os estoques da conta.
+   Cada linha do pedido guarda o estoque de origem; ao finalizar, a baixa e o
+   custo FIFO são registrados nesse estoque.
+7. Copie `.env.example` para `.env.local` e use a **mesma**
    `VITE_SUPABASE_URL` e chave pública/anon do monólito Estoque. A
    configuração local deste checkout já foi copiada da instalação do Estoque.
    O arquivo `.env.local` é ignorado pelo Git. Nunca use a senha do Postgres
    nem uma chave `service_role` em `VITE_`.
-7. Instale as dependências e inicie:
+8. Instale as dependências e inicie:
 
 ```bash
 pnpm install
@@ -49,13 +55,14 @@ pnpm dev
 A aplicação abre em `http://localhost:5173`. Entre com a mesma conta do
 Estoque Pro; seus estoques aparecem no seletor. Se a conta não tiver estoque,
 crie um ali ou no Estoque Pro. Na primeira importação, selecione produtos/kits
-ativos e confirme os preços; o valor sugerido vem do produto/kit ou próximo
-lote. Reimportar atualiza o preço sem duplicar o produto.
+ativos em qualquer estoque da conta e confirme os preços; o valor sugerido vem
+do produto/kit ou próximo lote. Reimportar atualiza o preço sem duplicar o item.
 
 Cada estoque pode ter vários kanbans, nomeados por dia, turno ou equipe. Cada
 kanban tem seu próprio catálogo importado e seus pedidos. Presets guardam uma
 seleção de produtos e seus preços para preencher rapidamente a próxima
-importação; eles podem ser usados em qualquer kanban do mesmo estoque.
+importação; eles podem ser usados em qualquer kanban do mesmo estoque, editados
+na tela de importação e excluídos pelo botão de lixeira.
 
 Pedidos guardam o nome, preço e custo unitário manual no momento da criação.
 Concluir um pedido sempre atualiza o status. Primeiro o banco tenta uma baixa

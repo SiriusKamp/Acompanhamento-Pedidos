@@ -3,7 +3,7 @@ import type { Session } from '@supabase/supabase-js';
 import { ArrowDownToLine, ArrowLeft, BarChart3, Bell, BellRing, CheckCheck, ChevronRight, CircleX, Clock3, LayoutDashboard, LoaderCircle, LogOut, Package, Plus, RefreshCw, Search, ShoppingBag, Sparkles, Wallet, Zap } from 'lucide-react';
 import type { ItemPreset, Order, OrderBoard, OrderStatus, Product } from './model';
 import { elapsedLabel, initials, money, parseAmount, statusLabels, timeLabel } from './model';
-import { createOrder, changeOrderStatus, createOrderBoard, createStock, getItemPresets, getOrderBoards, getOrders, getProducts, getStocks, saveItemPreset, updateProductPrice, type NewOrder, type Stock } from './lib/pedidosApi';
+import { createOrder, changeOrderStatus, createOrderBoard, createStock, deleteItemPreset, getItemPresets, getOrderBoards, getOrders, getProducts, getStocks, saveItemPreset, updateProductPrice, type NewOrder, type Stock } from './lib/pedidosApi';
 import { supabase } from './lib/supabase';
 import { OrderModal } from './components/OrderModal';
 import { ImportModal } from './components/ImportModal';
@@ -64,7 +64,7 @@ function OrderCard({ order, onStatus, busy, now, isNew }: {
     <span className="order-elapsed" aria-label={`Tempo desde a criação: ${elapsedLabel(order.createdAt, now)}`}><Clock3 size={15} /> {elapsedLabel(order.createdAt, now)}</span>
     <h3>{order.customer || 'Cliente sem nome'}</h3>
     {order.note && <p className="order-note">{order.note}</p>}
-    <div className="order-items">{order.items.map((item, index) => <div className="order-item" key={`${item.productId}-${index}`}><span className="order-item-quantity">{item.quantity}×</span><strong className="order-item-name">{item.name}</strong><span className="order-item-price">{money(item.quantity * item.unitPrice)}</span></div>)}</div>
+    <div className="order-items">{order.items.map((item, index) => <div className="order-item" key={`${item.productId}-${index}`}><span className="order-item-quantity">{item.quantity}×</span><strong className="order-item-name">{item.name}{item.sourceStockName && <small className="order-stock-origin">{item.sourceStockName}</small>}</strong><span className="order-item-price">{money(item.quantity * item.unitPrice)}</span></div>)}</div>
     <div className="order-financial"><div><span>Total</span><strong>{money(order.finalTotal)}</strong></div><small className={remaining > 0 ? 'payment-due' : 'payment-done'}>{remaining > 0 ? `Falta ${money(remaining)}` : change > 0 ? `Troco ${money(change)}` : 'Pagamento completo'}</small></div>
     {nextActions(order.status).length > 0 && <div className="card-actions">{nextActions(order.status).map(action => <button key={action.status} className={action.primary ? 'card-action-primary' : 'card-action-secondary'} disabled={busy} onClick={() => onStatus(order.id, action.status)}>{action.back && <ArrowLeft size={15} />}{action.label}{action.primary && !action.back && <ChevronRight size={15} />}</button>)}</div>}
     {order.status === 'finished' && <p className={`order-locked inventory-${order.inventoryStatus ?? 'pending'}`}>{
@@ -104,7 +104,7 @@ function CatalogCard({ product, onSave, busy }: {
     try { await onSave(product.id, parseAmount(priceText), unitCostText.trim() ? parseAmount(unitCostText) : null); setEditing(false); }
     catch (failure) { setError(failure instanceof Error ? failure.message : 'Não foi possível salvar.'); }
   }
-  return <article className="catalog-card"><div className="catalog-card-main"><div className={`catalog-avatar ${product.isKit ? 'avatar-kit' : ''}`}>{initials(product.name)}</div><div className="catalog-info"><span className="catalog-category">{product.category} {product.isKit && <b>Kit</b>}</span><h3>{product.name}</h3><p>{product.code}</p></div></div>
+  return <article className="catalog-card"><div className="catalog-card-main"><div className={`catalog-avatar ${product.isKit ? 'avatar-kit' : ''}`}>{initials(product.name)}</div><div className="catalog-info"><span className="catalog-category">{product.category} {product.isKit && <b>Kit</b>}</span><h3>{product.name}</h3><p>{product.code}</p>{product.sourceStockName && <small className="catalog-stock-origin">Estoque: {product.sourceStockName}</small>}</div></div>
     <div className="catalog-bottom"><div><small>Preço de venda</small>{editing ? <div className="catalog-edit"><div className="money-field"><span>R$</span><input aria-label={`Preço de ${product.name}`} inputMode="decimal" value={priceText} onChange={event => setPriceText(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void submit(); if (event.key === 'Escape') setEditing(false); }} /></div></div> : <strong>{money(product.price)}</strong>}</div><div><small>Custo unitário</small>{editing ? <div className="catalog-edit"><div className="money-field"><span>R$</span><input aria-label={`Custo de ${product.name}`} inputMode="decimal" placeholder="Opcional" value={unitCostText} onChange={event => setUnitCostText(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void submit(); if (event.key === 'Escape') setEditing(false); }} /></div><button className="button button-primary button-small" disabled={busy} onClick={submit}>Salvar</button></div> : <strong>{product.unitCost === null ? 'Não definido' : money(product.unitCost)}</strong>}</div>{!editing && <button className="link-button" onClick={() => setEditing(true)}>Editar valores</button>}</div>
     {product.suggestedPrice !== null && <div className="catalog-suggested"><Sparkles size={13} /> Sugerido pelo estoque: {money(product.suggestedPrice)}</div>}
     {error && <p className="form-error" role="alert">{error}</p>}
@@ -193,7 +193,7 @@ export default function App() {
     }
     let active = true;
     setStocksLoading(true); setStocksError('');
-    void getStocks().then(rows => {
+    void getStocks(userId).then(rows => {
       if (!active) return;
       setStocks(rows);
       const preferred = localStorage.getItem(`pedidos-stock:${userId}`);
@@ -420,6 +420,12 @@ export default function App() {
     return saved;
   }
 
+  async function removePreset(presetId: string) {
+    await deleteItemPreset(stockId, presetId);
+    setPresets(current => current.filter(preset => preset.id !== presetId));
+    setToast('Preset excluído.');
+  }
+
   if (authLoading) return <div className="loading-panel full-screen"><LoaderCircle className="spin" size={27} /> Recuperando sessão...</div>;
   if (!session) return <AuthScreen theme={theme} onThemeChange={setTheme} />;
   if (stocksLoading) return <div className="loading-panel full-screen"><LoaderCircle className="spin" size={27} /> Carregando estoques...</div>;
@@ -473,7 +479,7 @@ export default function App() {
     {tab === 'orders' && <button className="mobile-create-order" onClick={() => setModal('order')}><Plus size={21} /> Criar pedido</button>}
     {toast && <div className="toast" role="status"><CheckCheck size={17} />{toast}</div>}
     {modal === 'order' && <OrderModal products={products} onClose={() => setModal(null)} onCreate={addOrder} onImport={() => setModal('import')} />}
-    {modal === 'import' && <ImportModal stockId={stockId} boardId={boardId} stockName={boards.find(board => board.id === boardId)?.name ?? 'atual'} currentProducts={products} presets={presets} onClose={() => setModal(null)} onImported={imported} onSavePreset={savePreset} />}
+    {modal === 'import' && <ImportModal stockId={stockId} boardId={boardId} stockName={boards.find(board => board.id === boardId)?.name ?? 'atual'} stocks={stocks} currentProducts={products} presets={presets} onClose={() => setModal(null)} onImported={imported} onSavePreset={savePreset} onDeletePreset={removePreset} />}
     {createBoardOpen && <NewBoardModal onClose={() => setCreateBoardOpen(false)} onCreate={addBoard} />}
   </div>;
 }
