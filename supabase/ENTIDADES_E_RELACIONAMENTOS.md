@@ -37,7 +37,7 @@ erDiagram
   STOCKS o|--o{ ORDER_SALE_ITEMS : estoque_de_origem
   ORDER_SALE_ITEMS ||--o| ORDER_INVENTORY_SETTLEMENTS : baixa
   INVENTORY_OPERATIONS o|--o{ ORDER_INVENTORY_SETTLEMENTS : operacao_de_baixa
-  STOCKS ||--o{ ORDER_ITEM_PRESETS : salva
+  USERS ||--o{ ORDER_ITEM_PRESETS : salva
   ORDER_ITEM_PRESETS ||--|{ ORDER_ITEM_PRESET_ITEMS : contem
   PRODUCTS ||--o{ ORDER_ITEM_PRESET_ITEMS : produto_salvo
 ```
@@ -82,8 +82,8 @@ Uma operação pode ter várias linhas, e cada linha pode resultar em várias mo
 | `order_sales` | Pedido do Kanban, com número, cliente, observação, totais sugerido/final, valor pago, status e horários. O nome legado da tabela é `order_sales`, mas cada linha representa um pedido. |
 | `order_sale_items` | Linhas do pedido. Guarda quantidade, nome/preço capturados e snapshots financeiros calculados ao finalizar: receita, custo, origem/completude do custo e margem. Pode manter `catalog_item_id` opcional para preservar o histórico mesmo se o item do catálogo for removido. |
 | `order_inventory_settlements` | Uma liquidação por linha vendida: quantidades solicitada, baixada e pendente, situação, custo efetivo, mensagem de pendência e operação de estoque, quando existir. |
-| `order_item_presets` | Preset de seleção/preços pertencente ao estoque operacional do Kanban. O nome é único dentro do estoque. |
-| `order_item_preset_items` | Produtos e preços guardados em cada preset. Pode apontar para produtos de diferentes estoques do mesmo proprietário. |
+| `order_item_presets` | Preset de seleção e preços pertencente à conta Supabase autenticada. O nome é único dentro da conta; pode ser usado em qualquer estoque/Kanban dessa conta. `stock_id` legado registra o estoque selecionado ao salvar, mas não limita onde o preset pode ser carregado. |
+| `order_item_preset_items` | Produtos e preços guardados em cada preset. Os IDs dos produtos e os valores configurados persistem juntos. Pode apontar para produtos de diferentes estoques do mesmo proprietário. |
 
 ### Pedidos com produtos de vários estoques
 

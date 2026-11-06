@@ -119,7 +119,7 @@ export function ImportModal({ stockId, boardId, stockName, stocks, currentProduc
     } finally { setBusy(false); }
   }
 
-  return <Modal title="Importar produtos" subtitle={`Kanban ${stockName}: pesquise e selecione itens de todos os seus estoques.`}
+  return <Modal title="Importar produtos" subtitle={`Kanban ${stockName}: pesquise itens de todos os seus estoques. Presets e preços ficam salvos na sua conta.`}
     onClose={onClose} wide>
     <div className="import-body">
       {busy && !draft.length && <div className="modal-empty compact"><CloudDownload size={27} /><p>Buscando produtos e kits ativos...</p></div>}

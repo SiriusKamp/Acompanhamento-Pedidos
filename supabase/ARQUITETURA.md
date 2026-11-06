@@ -11,7 +11,7 @@ erDiagram
   ORDER_SALES ||--|{ ORDER_SALE_ITEMS : registra_itens
   ORDER_SALE_ITEMS ||--o| ORDER_INVENTORY_SETTLEMENTS : liquida_estoque
   ORDER_CATALOG_ITEMS o|--o{ ORDER_SALE_ITEMS : origem_do_preco
-  STOCKS ||--o{ ORDER_ITEM_PRESETS : salva_predefinicoes
+  USERS ||--o{ ORDER_ITEM_PRESETS : salva_predefinicoes
   ORDER_ITEM_PRESETS ||--|{ ORDER_ITEM_PRESET_ITEMS : contem
   PRODUCTS ||--o{ ORDER_ITEM_PRESET_ITEMS : produto_predefinido
 ```
@@ -25,6 +25,8 @@ As tabelas físicas preservam os nomes usados pelas RPCs existentes. Para leitur
 | `order_ticket_items` | Snapshot dos itens e preço que formaram cada pedido. |
 
 `order_catalog_items` é menu de um Kanban, não o catálogo global de estoque. Além do preço de venda, pode ter `unit_cost` manual para itens que não possuem um custo FIFO disponível. `order_sales` representa um pedido e mantém o nome por compatibilidade. `order_sale_items` congela o preço no pedido e, ao finalizar, grava receita final alocada, custo total, origem, completude do custo e margem. Alterações futuras no catálogo e nos lotes não mudam esses valores.
+
+`order_item_presets` e seus itens pertencem à conta autenticada e podem ser reutilizados em qualquer estoque/Kanban dessa conta. O catálogo de venda continua vinculado ao Kanban. Cada preset persiste os produtos selecionados e os respectivos preços.
 
 Ao finalizar, cada item gera uma liquidação em `order_inventory_settlements`. A baixa consome o saldo FIFO disponível até zero, aponta para sua operação e salva o custo real; a diferença fica registrada como quantidade pendente. O estado da liquidação é `settled`, `partial` ou `pending`. O pedido sempre finaliza. Quando houver custo manual, ele cobre a parte sem estoque e o retrato informa origem `mixed`; sem custo manual, o dashboard sinaliza a margem como incompleta. Custos manuais ficam congelados no item do pedido.
 

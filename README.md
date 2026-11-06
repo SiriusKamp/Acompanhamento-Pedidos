@@ -46,12 +46,16 @@ preserva o frontend HTTP anterior e seu contrato `API_CONTRACT.md`.
 8. Execute [supabase/migration_order_preset_id_ambiguity_fix.sql](supabase/migration_order_preset_id_ambiguity_fix.sql)
    para evitar conflito entre a variável local `v_preset_id` e a coluna
    `preset_id` ao salvar presets.
-9. Copie `.env.example` para `.env.local` e use a **mesma**
+9. Execute [supabase/migration_order_presets_account_scope.sql](supabase/migration_order_presets_account_scope.sql)
+   para tornar presets e preços disponíveis em todos os estoques e Kanbans da
+   conta. Ela migra os presets existentes, preserva itens e valores e ajusta
+   nomes repetidos entre estoques. Execute antes de publicar esta versão.
+10. Copie `.env.example` para `.env.local` e use a **mesma**
    `VITE_SUPABASE_URL` e chave pública/anon do monólito Estoque. A
    configuração local deste checkout já foi copiada da instalação do Estoque.
    O arquivo `.env.local` é ignorado pelo Git. Nunca use a senha do Postgres
    nem uma chave `service_role` em `VITE_`.
-10. Instale as dependências e inicie:
+11. Instale as dependências e inicie:
 
 ```bash
 pnpm install
@@ -66,9 +70,10 @@ do produto/kit ou próximo lote. Reimportar atualiza o preço sem duplicar o ite
 
 Cada estoque pode ter vários kanbans, nomeados por dia, turno ou equipe. Cada
 kanban tem seu próprio catálogo importado e seus pedidos. Presets guardam uma
-seleção de produtos e seus preços para preencher rapidamente a próxima
-importação; eles podem ser usados em qualquer kanban do mesmo estoque, editados
-na tela de importação e excluídos pelo botão de lixeira.
+seleção de produtos e seus preços na conta, para preencher rapidamente a
+próxima importação em qualquer kanban e estoque da mesma conta. O catálogo
+continua separado por kanban; os presets podem ser editados na tela de
+importação e excluídos pelo botão de lixeira.
 
 Pedidos guardam o nome, preço e custo unitário manual no momento da criação.
 Concluir um pedido sempre atualiza o status. Primeiro o banco tenta uma baixa
