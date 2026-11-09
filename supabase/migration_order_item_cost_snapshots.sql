@@ -14,12 +14,11 @@ BEGIN
   NEW.final_cost_snapshot:=coalesce(NEW.final_cost_snapshot,
     CASE WHEN catalog_cost IS NULL THEN NULL ELSE round(catalog_cost*NEW.quantity,6) END);
   NEW.cost_source:=coalesce(NEW.cost_source,
-    CASE WHEN catalog_cost IS NULL THEN 'missing' ELSE 'manual' END);
+    CASE WHEN catalog_cost IS NULL THEN 'missing' ELSE 'catalog_estimate' END);
   NEW.cost_complete_snapshot:=coalesce(NEW.cost_complete_snapshot,catalog_cost IS NOT NULL);
   RETURN NEW;
 END $$;
 
-DROP TRIGGER IF EXISTS order_sale_items_catalog_cost_snapshot ON public.order_sale_items;
 CREATE TRIGGER order_sale_items_catalog_cost_snapshot
   BEFORE INSERT ON public.order_sale_items
   FOR EACH ROW EXECUTE FUNCTION public.snapshot_order_item_catalog_cost();

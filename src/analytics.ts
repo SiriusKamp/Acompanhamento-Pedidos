@@ -63,6 +63,9 @@ export interface AnalyticsQuality {
   finishedOrders: number;
   costCompleteOrders: number;
   coveragePercent: number;
+  estimatedCostOrders?: number;
+  estimatedCostItems?: number;
+  estimatedCostTotal?: number;
 }
 
 export interface InventoryHealth {
@@ -159,6 +162,7 @@ export interface OrderAnalyticsDetailItem {
   profit: number | null;
   margin: number | null;
   costComplete: boolean;
+  costSource?: string | null;
   lots: Array<{ lotId: string; code: string; productName: string; quantityBase: number; cost: number }>;
 }
 

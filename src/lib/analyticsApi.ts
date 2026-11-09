@@ -31,7 +31,12 @@ export async function getAnalyticsOverview(stockId: string, filters: AnalyticsFi
   const { data, error } = await supabase.rpc('orders_analytics_overview', {
     ...baseFilters(stockId, filters), p_timezone: 'America/Sao_Paulo',
   });
-  return unwrap<AnalyticsOverview>(data, error, 'visão geral');
+  const overview = unwrap<AnalyticsOverview>(data, error, 'visão geral');
+  const { data: estimates, error: estimatesError } = await supabase.rpc('orders_analytics_estimate_summary', baseFilters(stockId, filters));
+  if (estimatesError) return overview;
+  const estimateSummary = estimates as { estimatedOrders?: number; estimatedItems?: number; estimatedCost?: number };
+  return { ...overview, quality: { ...overview.quality, estimatedCostOrders: Number(estimateSummary.estimatedOrders ?? 0),
+    estimatedCostItems: Number(estimateSummary.estimatedItems ?? 0), estimatedCostTotal: Number(estimateSummary.estimatedCost ?? 0) } };
 }
 
 export async function getAnalyticsProducts(
