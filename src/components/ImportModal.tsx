@@ -36,7 +36,9 @@ export function ImportModal({ stockId, boardId, stockName, stocks, currentProduc
             && item.sourceStockId === product.sourceStockId);
           return { ...product, selected: saved?.selected ?? !!existing,
             priceText: saved?.priceText ?? (existing?.price ?? product.suggestedPrice ?? 0).toFixed(2),
-            unitCostText: saved?.unitCostText ?? (existing?.unitCost === null || existing?.unitCost === undefined ? '' : existing.unitCost.toFixed(2)) };
+            unitCostText: saved?.unitCostText ?? (product.suggestedCost !== null
+              ? product.suggestedCost.toFixed(2)
+              : existing?.unitCost === null || existing?.unitCost === undefined ? '' : existing.unitCost.toFixed(2)) };
         });
       });
     }).catch(failure => {
@@ -145,11 +147,12 @@ export function ImportModal({ stockId, boardId, stockName, stocks, currentProduc
                 ? { ...row, priceText: event.target.value } : row))} /></div>
             <small>{item.suggestedPrice !== null ? `Sugerido: ${money(item.suggestedPrice)}` : 'Sem preço sugerido'}</small>
           </div>
-          <div className="import-price"><label>Custo unitário</label><div className="money-field"><span>R$</span>
+          <div className="import-price"><label>Custo unitário no catálogo</label><div className="money-field"><span>R$</span>
             <input inputMode="decimal" aria-label={`Custo de ${item.name}`} placeholder="Opcional" value={item.unitCostText}
               onChange={event => setDraft(items => items.map(row => row.sourceProductId === item.sourceProductId && row.sourceStockId === item.sourceStockId
                 ? { ...row, unitCostText: event.target.value } : row))} /></div>
-            <small>Usado se faltar custo FIFO</small>
+            <small>{item.suggestedCost === null ? 'Custo indisponível no estoque; você pode informar manualmente.'
+              : `${item.costIsEstimated || !item.costComplete ? 'Estimativa' : 'Custo atual'} do estoque: ${money(item.suggestedCost)}${!item.costComplete ? ' · incompleto' : ''}`}</small>
           </div>
         </div>)}
           {!filtered.length && <p className="list-empty">Nenhum produto corresponde à busca.</p>}

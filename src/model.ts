@@ -23,6 +23,10 @@ export interface OrderItem {
   quantity: number;
   unit?: 'un' | 'ml' | 'g';
   unitPrice: number;
+  unitCostSnapshot?: number | null;
+  finalCostSnapshot?: number | null;
+  costSource?: string | null;
+  costCompleteSnapshot?: boolean | null;
   sourceStockName?: string | null;
 }
 

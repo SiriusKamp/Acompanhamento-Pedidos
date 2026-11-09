@@ -89,9 +89,14 @@ export function OrderModal({ products, order, onClose, onCreate, onUpdate, onImp
           {products.length > 0 && filtered.length === 0 && <div className="modal-empty"><Search size={28} /><h3>Nenhum produto encontrado</h3><p>Tente outro nome ou código.</p></div>}
           {filtered.map(product => {
             const options = saleUnits(product); const unit = units[product.id] ?? 'un'; const price = unit === 'un' ? product.price : product.price / Math.max(1, baseContent(product));
+            const unitCost = product.unitCost === null ? null
+              : unit === 'un' ? product.unitCost : product.unitCost / Math.max(1, baseContent(product));
             return <div className="picker-item" key={product.id}>
               <div className={`product-avatar ${product.isKit ? 'avatar-kit' : ''}`}>{initials(product.name)}</div>
-              <div className="picker-info"><strong>{product.name}</strong><span>{product.category} · {product.code}</span></div>
+              <div className="picker-info"><strong>{product.name}</strong><span>{product.category} · {product.code}</span>
+                <small className="order-product-cost">{unitCost === null
+                  ? 'Custo não definido no catálogo' : `Custo salvo: ${money(unitCost)} por ${unitLabel[unit]}`}</small>
+              </div>
               <div className="picker-sale-unit"><strong>{money(price)}</strong>{options.length > 1 && <select aria-label={`Unidade de venda de ${product.name}`} value={unit} onChange={event => setUnits(current => ({ ...current, [product.id]: event.target.value as SaleUnit }))}>{options.map(option => <option key={option} value={option}>por {unitLabel[option]}</option>)}</select>}{options.length === 1 && <small>por unidade</small>}</div>
               <div className="stepper"><button aria-label={`Remover ${product.name}`} onClick={() => changeQuantity(product.id, -1)} disabled={!quantities[product.id]}><Minus size={14} /></button><input aria-label={`Quantidade ${unitLabel[unit]} de ${product.name}`} inputMode="numeric" value={quantities[product.id] ?? 0} onChange={event => setQuantities(current => ({ ...current, [product.id]: Math.max(0, Math.min(999999, Number(event.target.value) || 0)) }))} /><button aria-label={`Adicionar ${product.name}`} onClick={() => changeQuantity(product.id, 1)}><Plus size={14} /></button></div>
             </div>;

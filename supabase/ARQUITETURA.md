@@ -24,7 +24,9 @@ As tabelas físicas preservam os nomes usados pelas RPCs existentes. Para leitur
 | `order_tickets` | Pedido, Kanban, status, totais, pagamento e horário. |
 | `order_ticket_items` | Snapshot dos itens e preço que formaram cada pedido. |
 
-`order_catalog_items` é menu de um Kanban, não o catálogo global de estoque. Além do preço de venda, pode ter `unit_cost` manual para itens que não possuem um custo FIFO disponível. `order_sales` representa um pedido e mantém o nome por compatibilidade. `order_sale_items` congela o preço no pedido e, ao finalizar, grava receita final alocada, custo total, origem, completude do custo e margem. Alterações futuras no catálogo e nos lotes não mudam esses valores.
+`order_catalog_items` é menu de um Kanban, não o catálogo global de estoque. Além do preço de venda, guarda `unit_cost` por unidade vendável. Na importação, a interface consulta `estimate_recipe` no estoque de origem e sugere o custo estimado; quando não há custo calculável, a importação continua e um custo manual pode ser informado. `order_sales` representa um pedido e mantém o nome por compatibilidade. `order_sale_items` congela preço e custo no momento do pedido; ao finalizar, o custo pode ser substituído pelo custo real dos lotes consumidos. Alterações futuras no catálogo e nos lotes não mudam o snapshot já salvo.
+
+`migration_order_item_cost_snapshots.sql` instala o snapshot de custo em novas linhas e inclui os valores na RPC `orders_get_board`. Aplique-a depois de `migration_order_measurement_and_edit.sql` e das migrations de liquidação de estoque. Ela não preenche nem altera itens de pedidos existentes.
 
 `order_item_presets` e seus itens pertencem à conta autenticada e podem ser reutilizados em qualquer estoque/Kanban dessa conta. O catálogo de venda continua vinculado ao Kanban. Cada preset persiste os produtos selecionados e os respectivos preços.
 

@@ -262,6 +262,10 @@
 .import-stock-name{display:block;margin-top:3px;color:#7b6ce1;font-size:10px;font-weight:700}
 .order-stock-origin{display:block;margin-top:2px;color:#9298a8;font-size:9px;font-weight:600}
 .catalog-stock-origin{display:block;margin-top:4px;color:#7b6ce1;font-size:10px;font-weight:700}
+.order-product-cost,.order-cost-snapshot,.order-cost-unavailable{display:block;margin-top:3px;font-size:9px;font-weight:700;color:#438664}
+.order-cost-unavailable{color:#9298a8;font-weight:500}
+[data-theme="dark"] .order-product-cost,[data-theme="neon"] .order-product-cost,[data-theme="dark"] .order-cost-snapshot,[data-theme="neon"] .order-cost-snapshot{color:#7cdbac}
+[data-theme="dark"] .order-cost-unavailable,[data-theme="neon"] .order-cost-unavailable{color:var(--muted)}
 @media(max-width:760px){.import-stock-filter{min-width:0;max-width:135px;font-size:10px}.import-list-head{flex-wrap:wrap}.import-list-head .search-field{flex:1 1 100%}}
 /* Keep native select menus readable and visually aligned in each theme. */
 :root{color-scheme:light;--select-option-bg:#fff;--select-option-color:#363b4e;--select-option-active-bg:#eeecff;--select-option-active-color:#363b4e}

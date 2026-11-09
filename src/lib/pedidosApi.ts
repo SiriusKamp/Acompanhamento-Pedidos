@@ -11,6 +11,9 @@ export interface StockProduct {
   category: string;
   isKit: boolean;
   suggestedPrice: number | null;
+  suggestedCost: number | null;
+  costComplete: boolean;
+  costIsEstimated: boolean;
   contentQuantity: number | null;
   contentUnit: string | null;
 }
@@ -140,13 +143,40 @@ export async function getStockProducts(stockId: string, stockName: string): Prom
       is_kit: boolean; suggested_sale_price: number | null; next_sale: number | null;
       content_quantity: number | null; content_unit: string | null;
     }>>(data ?? [], error);
-    rows.push(...batch.map(row => ({
+    const estimates = new Map<string, { cost: number | null; complete: boolean; estimated: boolean }>();
+    for (let start = 0; start < batch.length; start += 100) {
+      const estimateBatch = batch.slice(start, start + 100);
+      try {
+        const { data, error } = await supabase.rpc('estimate_recipe', {
+          p_stock_id: stockId,
+          p_items: estimateBatch.map(row => ({ product_id: row.id, quantity: 1, unit: 'un' })),
+        });
+        if (error) throw error;
+        const payload = data as { items?: Array<{ product_id: string; estimated_cost?: number | null; cost_complete?: boolean; cost_is_estimated?: boolean }> } | null;
+        for (const item of payload?.items ?? []) {
+          estimates.set(item.product_id, {
+            cost: item.estimated_cost == null ? null : Number(item.estimated_cost),
+            complete: item.cost_complete === true,
+            estimated: item.cost_is_estimated === true,
+          });
+        }
+      } catch {
+        // Cost is advisory: import remains available when the estimator cannot respond.
+      }
+    }
+    rows.push(...batch.map(row => {
+      const estimate = estimates.get(row.id);
+      return {
       sourceProductId: row.id, name: row.name, code: row.sku,
       sourceStockId: stockId, sourceStockName: stockName,
       category: row.type_name ?? 'Sem categoria', isKit: row.is_kit,
       suggestedPrice: row.suggested_sale_price ?? row.next_sale,
+      suggestedCost: estimate?.cost ?? null,
+      costComplete: estimate?.complete ?? false,
+      costIsEstimated: estimate?.estimated ?? false,
       contentQuantity: row.content_quantity, contentUnit: row.content_unit,
-    })));
+      };
+    }));
     if (batch.length < 500) return rows;
   }
 }
