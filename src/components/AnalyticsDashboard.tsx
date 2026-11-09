@@ -8,8 +8,8 @@ import type {
   AnalyticsFilters, AnalyticsOverview, InventoryHealth, OrderAnalytics, OrderAnalyticsDetail,
   ProductAnalytics, ProductRecommendation, ProductRank,
 } from '../analytics';
-import { getAnalyticsOrderDetail, getAnalyticsOrders, getAnalyticsOverview, getAnalyticsProducts, getInventoryHealth } from '../lib/analyticsApi';
-import type { OrderBoard } from '../model';
+import { getAnalyticsOrderDetail, getAnalyticsOrders, getAnalyticsOverview, getAllAnalyticsProducts, getInventoryHealth } from '../lib/analyticsApi';
+import type { OrderBoard, Product } from '../model';
 import { money } from '../model';
 import { supabase } from '../lib/supabase';
 import { Modal } from './Modal';
@@ -94,6 +94,9 @@ function recommendation(
   product: ProductAnalytics, periodDays: number, targetMargin: number, targetCoverage: number,
   demandMedian: number, demandLow: number,
 ): ProductRecommendation {
+  if (product.quantityUnit && product.quantityUnit !== 'un') {
+    return { kind: 'healthy', title: 'Análise por medida', reason: `${compact(product.quantity)} ${product.quantityUnit} vendidos no período; custo e margem seguem calculados por essa medida.` };
+  }
   if (!product.costComplete || periodDays < 7 || product.orders < 3) {
     return { kind: 'incomplete', title: 'Dados insuficientes', reason: 'São necessários ao menos 7 dias, 3 pedidos e custo FIFO completo.' };
   }
@@ -219,7 +222,7 @@ function ProductTable({ products, periodDays, targetMargin, targetCoverage, onSe
       const insight = recommendation(product, periodDays, targetMargin, targetCoverage, median, low);
       return <tr key={product.productId} onClick={() => onSelect(product)} tabIndex={0} onKeyDown={event => { if (event.key === 'Enter') onSelect(product); }}>
         <td><strong>{product.name}</strong><small>{product.code || 'Sem código'} · {product.isKit ? 'Kit' : 'Produto'} · {product.orders} pedido(s)</small></td>
-        <td><strong>{compact(product.quantity)} un</strong><small>{compact(product.dailyVelocity)}/dia</small></td><td>{money(product.revenue)}</td><td>{product.costComplete ? money(product.cost ?? 0) : '—'}</td><td className={(product.profit ?? 0) < 0 ? 'negative-text' : 'positive-text'}>{product.costComplete ? money(product.profit ?? 0) : '—'}</td><td>{product.costComplete ? percent(product.margin) : 'Incompleto'}</td><td><strong>{compact(product.stockWholeUnits)} un</strong><small>{product.coverageDays === null ? 'Sem consumo' : `${number(product.coverageDays).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} dias`}</small></td><td><span className={`analytics-recommendation ${insight.kind}`}>{insight.title}</span><small>{insight.suggestedQuantity ? `Produzir +${insight.suggestedQuantity} un` : insight.reason}</small></td>
+        <td><strong>{compact(product.quantity)} {product.quantityUnit ?? 'un'}</strong><small>{compact(product.dailyVelocity)} {product.quantityUnit ?? 'un'}/dia</small></td><td>{money(product.revenue)}</td><td>{product.costComplete ? money(product.cost ?? 0) : '—'}</td><td className={(product.profit ?? 0) < 0 ? 'negative-text' : 'positive-text'}>{product.costComplete ? money(product.profit ?? 0) : '—'}</td><td>{product.costComplete ? percent(product.margin) : 'Incompleto'}</td><td><strong>{compact(product.stockWholeUnits)} {product.quantityUnit ?? 'un'}</strong><small>{product.coverageDays === null ? 'Sem consumo' : `${number(product.coverageDays).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} dias`}</small></td><td><span className={`analytics-recommendation ${insight.kind}`}>{insight.title}</span><small>{insight.suggestedQuantity ? `Produzir +${insight.suggestedQuantity} un` : insight.reason}</small></td>
       </tr>;
     })}
   </tbody></table>{!products.length && <div className="analytics-empty-chart">Nenhum produto finalizado corresponde aos filtros.</div>}</div>;
@@ -241,7 +244,7 @@ function ProductQuadrant({ products, periodDays, targetMargin, targetCoverage, o
 }
 
 function ProductFocus({ product, insight, onClose }: { product: ProductAnalytics; insight: ProductRecommendation; onClose: () => void }) {
-  return <aside className="product-focus"><button className="icon-button" onClick={onClose} aria-label="Fechar detalhes"><X size={17} /></button><span className={`analytics-recommendation ${insight.kind}`}>{insight.title}</span><h3>{product.name}</h3><p>{insight.reason}</p><div className="product-focus-grid"><div><span>Lucro</span><strong>{product.costComplete ? money(product.profit ?? 0) : '—'}</strong></div><div><span>Margem</span><strong>{product.costComplete ? percent(product.margin) : '—'}</strong></div><div><span>Receita</span><strong>{money(product.revenue)}</strong></div><div><span>Quantidade</span><strong>{compact(product.quantity)} un</strong></div><div><span>Estoque</span><strong>{compact(product.stockWholeUnits)} un</strong></div><div><span>Última venda</span><strong>{dateLabel(product.lastSaleAt)}</strong></div></div>{insight.suggestedQuantity ? <div className="product-production-call"><Factory size={19} /><div><b>Produção sugerida</b><span>+{insight.suggestedQuantity} unidade(s) para atingir a cobertura alvo.</span></div></div> : null}</aside>;
+  return <aside className="product-focus"><button className="icon-button" onClick={onClose} aria-label="Fechar detalhes"><X size={17} /></button><span className={`analytics-recommendation ${insight.kind}`}>{insight.title}</span><h3>{product.name}</h3><p>{insight.reason}</p><div className="product-focus-grid"><div><span>Lucro</span><strong>{product.costComplete ? money(product.profit ?? 0) : '—'}</strong></div><div><span>Margem</span><strong>{product.costComplete ? percent(product.margin) : '—'}</strong></div><div><span>Receita</span><strong>{money(product.revenue)}</strong></div><div><span>Quantidade</span><strong>{compact(product.quantity)} {product.quantityUnit ?? 'un'}</strong></div><div><span>Estoque</span><strong>{compact(product.stockWholeUnits)} {product.quantityUnit ?? 'un'}</strong></div><div><span>Última venda</span><strong>{dateLabel(product.lastSaleAt)}</strong></div></div>{insight.suggestedQuantity ? <div className="product-production-call"><Factory size={19} /><div><b>Produção sugerida</b><span>+{insight.suggestedQuantity} unidade(s) para atingir a cobertura alvo.</span></div></div> : null}</aside>;
 }
 
 function OrdersTable({ orders, onOpen }: { orders: OrderAnalytics[]; onOpen: (order: OrderAnalytics) => void }) {
@@ -257,7 +260,7 @@ function OrderDetailModal({ stockId, order, onClose }: { stockId: string; order:
   </Modal>;
 }
 
-export function AnalyticsDashboard({ stockId, boards }: { stockId: string; boards: OrderBoard[] }) {
+export function AnalyticsDashboard({ stockId, boards, catalogProducts }: { stockId: string; boards: OrderBoard[]; catalogProducts: Product[] }) {
   const [view, setView] = useState<AnalyticsView>('overview');
   const [filters, setFilters] = useState<AnalyticsFilters>(() => initialFilters());
   const [overview, setOverview] = useState<AnalyticsOverview | null>(null);
@@ -273,6 +276,10 @@ export function AnalyticsDashboard({ stockId, boards }: { stockId: string; board
   const [selectedOrder, setSelectedOrder] = useState<OrderAnalytics | null>(null);
   const [targetMargin, setTargetMargin] = useState(() => Number(localStorage.getItem('analytics-target-margin') ?? 20));
   const [targetCoverage, setTargetCoverage] = useState(() => Number(localStorage.getItem('analytics-target-coverage') ?? 7));
+  const [productSort, setProductSort] = useState<'quantity' | 'revenue' | 'cost' | 'profit' | 'margin' | 'name'>('quantity');
+  const [productDirection, setProductDirection] = useState<'asc' | 'desc'>('desc');
+  const [productCategory, setProductCategory] = useState('all');
+  const [productSourceStock, setProductSourceStock] = useState('all');
   const deferredSearch = useDeferredValue(filters.search);
 
   useEffect(() => { localStorage.setItem('analytics-target-margin', String(targetMargin)); }, [targetMargin]);
@@ -285,7 +292,7 @@ export function AnalyticsDashboard({ stockId, boards }: { stockId: string; board
     setLoading(true); setError('');
     void Promise.all([
       getAnalyticsOverview(stockId, queryFilters),
-      getAnalyticsProducts(stockId, queryFilters, 'profit', 'desc'),
+      getAllAnalyticsProducts(stockId, queryFilters),
       getAnalyticsOrders(stockId, queryFilters),
       getInventoryHealth(stockId, queryFilters),
     ]).then(([nextOverview, nextProducts, nextOrders, nextInventoryHealth]) => {
@@ -312,6 +319,26 @@ export function AnalyticsDashboard({ stockId, boards }: { stockId: string; board
   const insights = useMemo(() => products.map(product => ({ product, insight: recommendation(product, productPeriodDays, targetMargin, targetCoverage, demandMedian, demandLow) }))
     .filter(value => !['healthy', 'incomplete'].includes(value.insight.kind))
     .sort((a, b) => (b.product.profit ?? -Infinity) - (a.product.profit ?? -Infinity)).slice(0, 6), [products, productPeriodDays, targetMargin, targetCoverage, demandMedian, demandLow]);
+  const catalogBySourceId = useMemo(() => new Map(catalogProducts.filter(product => product.sourceProductId)
+    .map(product => [product.sourceProductId!, product])), [catalogProducts]);
+  const categories = useMemo(() => [...new Set(catalogProducts.map(product => product.category).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')), [catalogProducts]);
+  const sourceStocks = useMemo(() => [...new Map(catalogProducts.filter(product => product.sourceStockId)
+    .map(product => [product.sourceStockId!, product.sourceStockName ?? product.sourceStockId!])).entries()], [catalogProducts]);
+  const visibleProducts = useMemo(() => products.filter(product => {
+    const catalog = catalogBySourceId.get(product.productId);
+    return (productCategory === 'all' || catalog?.category === productCategory)
+      && (productSourceStock === 'all' || catalog?.sourceStockId === productSourceStock);
+  }).sort((a, b) => {
+    if (productSort !== 'name') {
+      const left = a[productSort]; const right = b[productSort];
+      if (left === null || left === undefined) return 1;
+      if (right === null || right === undefined) return -1;
+      const value = Number(left) - Number(right);
+      return productDirection === 'desc' ? -value : value;
+    }
+    const value = a.name.localeCompare(b.name, 'pt-BR');
+    return productDirection === 'desc' ? -value : value;
+  }), [products, catalogBySourceId, productCategory, productSourceStock, productSort, productDirection]);
 
   return <section className="analytics-page">
     <header className="analytics-hero"><div><span className="section-kicker">ANÁLISE E DECISÃO</span><h1>Vendas que viram<br /><em>decisões melhores.</em></h1><p>Receita, custo FIFO e margem por pedido, kanban e produto.</p></div><div className="analytics-hero-icon"><BarChart3 size={42} /></div></header>
@@ -324,9 +351,9 @@ export function AnalyticsDashboard({ stockId, boards }: { stockId: string; board
       {view === 'overview' && <><div className="analytics-metrics"><MetricCard label="Pedidos finalizados" value={overview.summary.orders} previous={overview.previous.orders} icon={ClipboardList} /><MetricCard label="Receita realizada" value={overview.summary.revenue} previous={overview.previous.revenue} moneyValue icon={CircleDollarSign} /><MetricCard label="CMV FIFO" value={overview.summary.cost} previous={overview.previous.cost} moneyValue detail={overview.quality.coveragePercent < 100 ? `${percent(overview.quality.coveragePercent)} com custo completo` : undefined} icon={Box} /><MetricCard label="Lucro bruto" value={overview.summary.profit} previous={overview.previous.profit} moneyValue icon={TrendingUp} /><MetricCard label="Margem bruta" value={overview.summary.margin} previous={overview.previous.margin} detail={`Markup ${percent(overview.summary.markup)}`} icon={TrendingDown} /><MetricCard label="Ticket médio" value={overview.summary.averageTicket} previous={overview.previous.averageTicket} moneyValue detail={overview.summary.openPotential ? `${money(overview.summary.openPotential)} em aberto` : 'Nenhum pedido aberto no período'} icon={Package} /></div>
         <div className="analytics-grid-main"><section className="analytics-card analytics-trend-card"><div className="analytics-card-heading"><div><span>RESULTADO NO TEMPO</span><h3>Receita, CMV e lucro por dia</h3></div><small>{filters.boardIds.length ? `${filters.boardIds.length} kanban(s)` : 'Todos os kanbans'}</small></div><FinancialTrend points={overview.series} /></section><section className="analytics-card analytics-insights-card"><div className="analytics-card-heading"><div><span>PRÓXIMAS AÇÕES</span><h3>O que merece atenção</h3></div></div>{insights.length ? <div className="analytics-insights">{insights.map(({ product, insight }) => <button key={product.productId} className={`analytics-insight ${insight.kind}`} onClick={() => setSelectedProduct(product)}><span>{insight.kind === 'produce' ? <Factory size={17} /> : insight.kind === 'avoid-stockout' ? <AlertTriangle size={17} /> : insight.kind === 'review-price' ? <CircleDollarSign size={17} /> : <TrendingUp size={17} />}</span><div><b>{insight.title} · {product.name}</b><small>{insight.reason}</small></div></button>)}</div> : <div className="analytics-empty-chart">Não há alertas com dados suficientes neste período.</div>}</section></div>
         <div className="analytics-grid-secondary"><section className="analytics-card analytics-boards-card"><div className="analytics-card-heading"><div><span>COMPARAÇÃO</span><h3>Resultado por kanban</h3></div></div><div className="analytics-board-list">{overview.boards.length ? overview.boards.map(board => <button key={board.id} onClick={() => setFilters(current => ({ ...current, boardIds: [board.id] }))}><div><strong>{board.name}</strong><small>{board.orders} pedido(s) · margem {percent(board.margin)}</small></div><span>{money(board.profit)}</span><i style={{ width: `${Math.min(100, board.revenue / Math.max(1, ...overview.boards.map(item => item.revenue)) * 100)}%` }} /></button>) : <p>Nenhum kanban com pedidos finalizados.</p>}</div></section><section className="analytics-card analytics-pareto-card"><div className="analytics-card-heading"><div><span>CONTRIBUIÇÃO</span><h3>Pareto do lucro</h3></div><small>Acumulado</small></div>{overview.pareto.length ? <div className="analytics-pareto">{overview.pareto.slice(0, 7).map(point => <div key={point.productId}><div><span>{point.name}</span><b>{money(point.profit)}</b></div><i><em style={{ width: `${Math.min(100, point.accumulatedPercent)}%` }} /></i><small>{percent(point.accumulatedPercent)}</small></div>)}</div> : <div className="analytics-empty-chart">Sem lucro rastreável no período.</div>}</section></div>
-        <div className="analytics-ranking-grid"><RankList title="Mais vendidos" rows={overview.rankings.byQuantity} value={row => `${compact(row.quantity)} un`} /><RankList title="Maior receita" rows={overview.rankings.byRevenue} value={row => money(row.revenue)} /><RankList title="Maior lucro" rows={overview.rankings.byProfit} value={row => money(row.profit)} /></div>
+        <div className="analytics-ranking-grid"><RankList title="Mais vendidos" rows={overview.rankings.byQuantity} value={row => `${compact(row.quantity)} ${catalogBySourceId.get(row.productId)?.contentUnit && ['ml','l'].includes(catalogBySourceId.get(row.productId)!.contentUnit!.toLowerCase()) ? 'ml' : catalogBySourceId.get(row.productId)?.contentUnit && ['g','kg'].includes(catalogBySourceId.get(row.productId)!.contentUnit!.toLowerCase()) ? 'g' : 'un'}`} /><RankList title="Maior receita" rows={overview.rankings.byRevenue} value={row => money(row.revenue)} /><RankList title="Maior lucro" rows={overview.rankings.byProfit} value={row => money(row.profit)} /></div>
       </>}
-      {view === 'products' && <><section className="analytics-products-toolbar"><label className="search-field"><Search size={18} /><input aria-label="Buscar produto na análise" placeholder="Buscar por nome ou código" value={filters.search} onChange={event => setFilters(current => ({ ...current, search: event.target.value }))} /></label><label className="analytics-filter"><span>Mostrar</span><select value={filters.productKind} onChange={event => setFilters(current => ({ ...current, productKind: event.target.value as AnalyticsFilters['productKind'] }))}><option value="all">Produtos e kits</option><option value="product">Produtos</option><option value="kit">Kits</option></select></label><span>{products.length} produto(s) com venda finalizada</span></section><div className="analytics-product-map"><ProductQuadrant products={products} periodDays={productPeriodDays} targetMargin={targetMargin} targetCoverage={targetCoverage} onSelect={setSelectedProduct} /></div><section className="analytics-card"><div className="analytics-card-heading"><div><span>RENTABILIDADE POR PRODUTO</span><h3>Decisões baseadas em saída, lucro e cobertura</h3></div><small>Clique em uma linha para ver o resumo</small></div><ProductTable products={products} periodDays={productPeriodDays} targetMargin={targetMargin} targetCoverage={targetCoverage} onSelect={setSelectedProduct} /></section></>}
+      {view === 'products' && <><section className="analytics-products-toolbar"><label className="search-field"><Search size={18} /><input aria-label="Buscar produto na análise" placeholder="Buscar por nome ou código" value={filters.search} onChange={event => setFilters(current => ({ ...current, search: event.target.value }))} /></label><label className="analytics-filter"><span>Mostrar</span><select value={filters.productKind} onChange={event => setFilters(current => ({ ...current, productKind: event.target.value as AnalyticsFilters['productKind'] }))}><option value="all">Produtos e kits</option><option value="product">Produtos</option><option value="kit">Kits</option></select></label><label className="analytics-filter"><span>Categoria</span><select value={productCategory} onChange={event => setProductCategory(event.target.value)}><option value="all">Todas</option>{categories.map(category => <option key={category} value={category}>{category}</option>)}</select></label><label className="analytics-filter"><span>Estoque de origem</span><select value={productSourceStock} onChange={event => setProductSourceStock(event.target.value)}><option value="all">Todos</option>{sourceStocks.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label><label className="analytics-filter"><span>Ordenar por</span><select value={productSort} onChange={event => setProductSort(event.target.value as typeof productSort)}><option value="quantity">Quantidade vendida</option><option value="revenue">Receita</option><option value="cost">Custo</option><option value="profit">Lucro</option><option value="margin">Margem</option><option value="name">Nome</option></select></label><button className="button button-secondary" onClick={() => setProductDirection(value => value === 'desc' ? 'asc' : 'desc')}>{productDirection === 'desc' ? 'Maior → menor' : 'Menor → maior'}</button><span>{visibleProducts.length} produto(s) com venda finalizada</span></section><div className="analytics-product-map"><ProductQuadrant products={visibleProducts} periodDays={productPeriodDays} targetMargin={targetMargin} targetCoverage={targetCoverage} onSelect={setSelectedProduct} /></div><section className="analytics-card"><div className="analytics-card-heading"><div><span>RENTABILIDADE POR PRODUTO</span><h3>Lista completa · receita, custo e margem</h3></div><small>Clique em uma linha para ver o resumo</small></div><ProductTable products={visibleProducts} periodDays={productPeriodDays} targetMargin={targetMargin} targetCoverage={targetCoverage} onSelect={setSelectedProduct} /></section></>}
       {view === 'orders' && <section className="analytics-card"><div className="analytics-card-heading"><div><span>AUDITORIA FINANCEIRA</span><h3>Lucro por pedido finalizado</h3></div><small>{orders.length} pedido(s) mais recentes</small></div><OrdersTable orders={orders} onOpen={setSelectedOrder} /></section>}
     </> : null}
     {selectedProduct && selectedInsight && <ProductFocus product={selectedProduct} insight={selectedInsight} onClose={() => setSelectedProduct(null)} />}

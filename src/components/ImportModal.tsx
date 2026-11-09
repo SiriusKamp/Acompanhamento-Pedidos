@@ -126,13 +126,34 @@ export function ImportModal({ stockId, boardId, stockName, stocks, currentProduc
       {!busy && !draft.length && !error && <div className="modal-empty compact"><Package size={27} /><p>Este estoque não possui produtos ativos.</p></div>}
       {!!draft.length && <>
         <div className="import-list-head"><label className="search-field"><Search size={17} />
-          <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Filtrar produtos" />
+          <input aria-label="Buscar produtos por nome ou código" value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar produtos por nome ou código" />
         </label><select className="import-stock-filter" aria-label="Filtrar itens por estoque" value={stockFilter} onChange={event => setStockFilter(event.target.value)}>
           <option value="all">Todos os estoques</option>{stocks.map(stock => <option key={stock.id} value={stock.id}>{stock.name}</option>)}
         </select><button className="text-back" onClick={() => setDraft(items => items.map(item =>
           ({ ...item, selected: selectedCount !== items.length })))}>
           {selectedCount === draft.length ? 'Desmarcar todos' : 'Selecionar todos'}
         </button></div>
+        <div className="import-list">{filtered.map(item => <div className="import-row" key={`${item.sourceStockId}-${item.sourceProductId}`}>
+          <label className="import-check"><input type="checkbox" checked={item.selected}
+            onChange={event => setDraft(items => items.map(row => row.sourceProductId === item.sourceProductId && row.sourceStockId === item.sourceStockId
+              ? { ...row, selected: event.target.checked } : row))} />
+            <span className="check-ui"><Check size={13} /></span></label>
+          <div className="import-row-info"><strong>{item.name}</strong><span>{item.category} · {item.code}</span><small className="import-stock-name">{item.sourceStockName}</small></div>
+          <div className="import-price"><label>Preço de venda</label><div className="money-field"><span>R$</span>
+            <input inputMode="decimal" aria-label={`Preço de ${item.name}`} value={item.priceText}
+              onChange={event => setDraft(items => items.map(row => row.sourceProductId === item.sourceProductId && row.sourceStockId === item.sourceStockId
+                ? { ...row, priceText: event.target.value } : row))} /></div>
+            <small>{item.suggestedPrice !== null ? `Sugerido: ${money(item.suggestedPrice)}` : 'Sem preço sugerido'}</small>
+          </div>
+          <div className="import-price"><label>Custo unitário</label><div className="money-field"><span>R$</span>
+            <input inputMode="decimal" aria-label={`Custo de ${item.name}`} placeholder="Opcional" value={item.unitCostText}
+              onChange={event => setDraft(items => items.map(row => row.sourceProductId === item.sourceProductId && row.sourceStockId === item.sourceStockId
+                ? { ...row, unitCostText: event.target.value } : row))} /></div>
+            <small>Usado se faltar custo FIFO</small>
+          </div>
+        </div>)}
+          {!filtered.length && <p className="list-empty">Nenhum produto corresponde à busca.</p>}
+        </div>
         <div className="preset-tools">
           <div className="preset-select-row"><label className="field"><span>Usar preset salvo</span><select value={activePresetId} onChange={event => applyPreset(event.target.value)}>
               <option value="">Selecione um preset para marcar os itens</option>
@@ -143,33 +164,12 @@ export function ImportModal({ stockId, boardId, stockName, stocks, currentProduc
               <Trash2 size={17} />
             </button>
           </div>
-          <div className="preset-save"><label className="field"><span>Salvar seleção atual</span><input value={presetName}
+          <div className="preset-save"><label className="field"><span>Nome do preset para esta seleção</span><input aria-label="Nome do preset" value={presetName}
             onChange={event => setPresetName(event.target.value)} placeholder="Ex.: Cardápio de sexta" maxLength={80} /></label>
             <button className="button button-secondary" onClick={() => void savePreset()} disabled={presetBusy || !selectedCount}>
               {presetBusy ? 'Salvando...' : 'Salvar preset'}
             </button>
           </div>
-        </div>
-        <div className="import-list">{filtered.map(item => <div className="import-row" key={item.sourceProductId}>
-          <label className="import-check"><input type="checkbox" checked={item.selected}
-            onChange={event => setDraft(items => items.map(row => row.sourceProductId === item.sourceProductId
-              ? { ...row, selected: event.target.checked } : row))} />
-            <span className="check-ui"><Check size={13} /></span></label>
-          <div className="import-row-info"><strong>{item.name}</strong><span>{item.category} · {item.code}</span><small className="import-stock-name">{item.sourceStockName}</small></div>
-          <div className="import-price"><label>Preço de venda</label><div className="money-field"><span>R$</span>
-            <input inputMode="decimal" aria-label={`Preço de ${item.name}`} value={item.priceText}
-              onChange={event => setDraft(items => items.map(row => row.sourceProductId === item.sourceProductId
-                ? { ...row, priceText: event.target.value } : row))} /></div>
-            <small>{item.suggestedPrice !== null ? `Sugerido: ${money(item.suggestedPrice)}` : 'Sem preço sugerido'}</small>
-          </div>
-          <div className="import-price"><label>Custo unitário</label><div className="money-field"><span>R$</span>
-            <input inputMode="decimal" aria-label={`Custo de ${item.name}`} placeholder="Opcional" value={item.unitCostText}
-              onChange={event => setDraft(items => items.map(row => row.sourceProductId === item.sourceProductId
-                ? { ...row, unitCostText: event.target.value } : row))} /></div>
-            <small>Usado se faltar custo FIFO</small>
-          </div>
-        </div>)}
-          {!filtered.length && <p className="list-empty">Nenhum produto corresponde à busca.</p>}
         </div>
         <div className="import-footer"><span><Sparkles size={16} /> {selectedCount} de {draft.length} selecionados</span>
           <button className="button button-primary" onClick={saveImport} disabled={!selectedCount || busy}>

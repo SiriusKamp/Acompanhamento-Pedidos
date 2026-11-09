@@ -10,6 +10,8 @@ export interface Product {
   category: string;
   isKit: boolean;
   suggestedPrice: number | null;
+  contentQuantity?: number | null;
+  contentUnit?: string | null;
   price: number;
   unitCost: number | null;
   importedAt: string;
@@ -19,6 +21,7 @@ export interface OrderItem {
   productId: string;
   name: string;
   quantity: number;
+  unit?: 'un' | 'ml' | 'g';
   unitPrice: number;
   sourceStockName?: string | null;
 }

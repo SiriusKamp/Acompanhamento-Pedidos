@@ -30,6 +30,8 @@ As tabelas físicas preservam os nomes usados pelas RPCs existentes. Para leitur
 
 Ao finalizar, cada item gera uma liquidação em `order_inventory_settlements`. A baixa consome o saldo FIFO disponível até zero, aponta para sua operação e salva o custo real; a diferença fica registrada como quantidade pendente. O estado da liquidação é `settled`, `partial` ou `pending`. O pedido sempre finaliza. Quando houver custo manual, ele cobre a parte sem estoque e o retrato informa origem `mixed`; sem custo manual, o dashboard sinaliza a margem como incompleta. Custos manuais ficam congelados no item do pedido.
 
+`order_sale_items.unit` registra `un`, `ml` ou `g`. A interface oferece volume/peso somente quando o produto possui conteúdo compatível (`ml/l` ou `g/kg`). A baixa usa `decrement_inventory` com essa unidade e mantém a quantidade em base; preços de venda e custos manuais por embalagem são convertidos para a unidade medida. `orders_update_board` permite ajustar cabeçalho e linhas enquanto o pedido não está finalizado. Pedidos finalizados permanecem imutáveis para preservar seus movimentos FIFO. Nas análises, quantidades são convertidas para a unidade base do produto antes de agregar.
+
 No modo monólito pessoal, `migration_monolith_no_rls.sql` desativa RLS nas tabelas públicas. As RPCs continuam centralizando as validações operacionais de Kanban, produto, status e consistência do estoque.
 
 

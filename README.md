@@ -50,7 +50,11 @@ preserva o frontend HTTP anterior e seu contrato `API_CONTRACT.md`.
    para tornar presets e preços disponíveis em todos os estoques e Kanbans da
    conta. Ela migra os presets existentes, preserva itens e valores e ajusta
    nomes repetidos entre estoques. Execute antes de publicar esta versão.
-10. Copie `.env.example` para `.env.local` e use a **mesma**
+10. Execute [supabase/migration_order_measurement_and_edit.sql](supabase/migration_order_measurement_and_edit.sql)
+   para editar pedidos ainda não finalizados, vender itens por `ml` ou `g`,
+   baixar essas medidas do estoque e normalizar quantidades nas análises.
+   Pedidos finalizados permanecem bloqueados para proteger o histórico FIFO.
+11. Copie `.env.example` para `.env.local` e use a **mesma**
    `VITE_SUPABASE_URL` e chave pública/anon do monólito Estoque. A
    configuração local deste checkout já foi copiada da instalação do Estoque.
    O arquivo `.env.local` é ignorado pelo Git. Nunca use a senha do Postgres
@@ -133,5 +137,16 @@ capacidade lê as migrations do projeto `sirius-cosmical-stock2`, que precisa
 estar como irmão deste diretório. O banco Supabase remoto não é alterado pelos
 testes. `test:stock` também requer esse projeto irmão para confirmar a baixa FIFO
 no monólito.
-Após aplicar o SQL remoto, valide
-login, importação, criação e finalização de um pedido num estoque de teste.
+Pedidos em andamento podem ser corrigidos pelo botão **Editar** no card,
+incluindo itens, quantidades, medidas, pagamento e total final. Produtos com
+conteúdo por volume ou peso podem ser vendidos em `ml` ou `g`; o custo FIFO,
+a baixa e as análises usam a quantidade medida. Para uma embalagem de 2 L,
+por exemplo, o preço sugerido por ml é calculado a partir do preço cadastrado
+para a unidade/embalagem. Pedidos já finalizados ficam somente para consulta.
+
+A aba de produtos das análises permite consultar a lista completa, filtrar por
+categoria e estoque de origem e ordenar por quantidade, receita, custo, lucro,
+margem ou nome.
+
+Após aplicar o SQL remoto, valide login, importação, criação e finalização de
+um pedido num estoque de teste.

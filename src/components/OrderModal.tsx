@@ -1,20 +1,37 @@
 import { useMemo, useState } from 'react';
 import { Minus, Plus, RotateCcw, Search, ShoppingBag, Sparkles } from 'lucide-react';
-import type { Product } from '../model';
+import type { Order, Product } from '../model';
 import { initials, money, parseAmount } from '../model';
 import type { NewOrder } from '../lib/pedidosApi';
 import { Modal } from './Modal';
 
-export function OrderModal({ products, onClose, onCreate, onImport }: {
-  products: Product[]; onClose: () => void; onCreate: (order: NewOrder) => Promise<void>; onImport: () => void;
+type SaleUnit = 'un' | 'ml' | 'g';
+const unitLabel: Record<SaleUnit, string> = { un: 'un', ml: 'ml', g: 'g' };
+function saleUnits(product: Product): SaleUnit[] {
+  const content = (product.contentUnit ?? '').toLowerCase();
+  if (content === 'ml' || content === 'l') return ['un', 'ml'];
+  if (content === 'g' || content === 'kg') return ['un', 'g'];
+  return ['un'];
+}
+function baseContent(product: Product) {
+  const amount = Number(product.contentQuantity ?? 0);
+  const unit = (product.contentUnit ?? '').toLowerCase();
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  return unit === 'l' || unit === 'kg' ? amount * 1000 : amount;
+}
+
+export function OrderModal({ products, order, onClose, onCreate, onUpdate, onImport }: {
+  products: Product[]; order?: Order; onClose: () => void; onCreate: (order: NewOrder) => Promise<void>;
+  onUpdate?: (orderId: string, order: NewOrder) => Promise<void>; onImport: () => void;
 }) {
   const [search, setSearch] = useState('');
   const [kitOnly, setKitOnly] = useState(false);
-  const [quantities, setQuantities] = useState<Record<string, number>>({});
-  const [customer, setCustomer] = useState('');
-  const [note, setNote] = useState('');
-  const [editedFinal, setEditedFinal] = useState<string | null>(null);
-  const [paidText, setPaidText] = useState('');
+  const [quantities, setQuantities] = useState<Record<string, number>>(() => Object.fromEntries(order?.items.map(item => [item.productId, item.quantity]) ?? []));
+  const [units, setUnits] = useState<Record<string, SaleUnit>>(() => Object.fromEntries(order?.items.map(item => [item.productId, item.unit ?? 'un']) ?? []));
+  const [customer, setCustomer] = useState(order?.customer ?? '');
+  const [note, setNote] = useState(order?.note ?? '');
+  const [editedFinal, setEditedFinal] = useState<string | null>(order?.finalTotal.toFixed(2) ?? null);
+  const [paidText, setPaidText] = useState(order?.paid ? order.paid.toFixed(2) : '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -25,7 +42,11 @@ export function OrderModal({ products, onClose, onCreate, onImport }: {
         .toLowerCase().includes(needle));
   }, [products, search, kitOnly]);
   const selected = products.filter(product => (quantities[product.id] ?? 0) > 0);
-  const subtotal = Math.round(selected.reduce((sum, product) => sum + product.price * quantities[product.id], 0) * 100) / 100;
+  function priceFor(product: Product) {
+    const unit = units[product.id] ?? 'un';
+    return unit === 'un' ? product.price : product.price / Math.max(1, baseContent(product));
+  }
+  const subtotal = Math.round(selected.reduce((sum, product) => sum + priceFor(product) * quantities[product.id], 0) * 100) / 100;
   const finalText = editedFinal ?? subtotal.toFixed(2);
   const finalTotal = parseAmount(finalText);
   const paid = parseAmount(paidText);
@@ -33,7 +54,7 @@ export function OrderModal({ products, onClose, onCreate, onImport }: {
   const remaining = Math.max(0, Math.round((finalTotal - paid) * 100) / 100);
 
   function changeQuantity(id: string, difference: number) {
-    setQuantities(current => ({ ...current, [id]: Math.max(0, Math.min(999, (current[id] ?? 0) + difference)) }));
+    setQuantities(current => ({ ...current, [id]: Math.max(0, Math.min(999999, (current[id] ?? 0) + difference)) }));
   }
 
   async function submit() {
@@ -46,16 +67,17 @@ export function OrderModal({ products, onClose, onCreate, onImport }: {
     }
     setBusy(true); setError('');
     try {
-      await onCreate({ customer: customer.trim(), note: note.trim(),
-        items: selected.map(product => ({ productId: product.id, quantity: quantities[product.id] })),
-        finalTotal, paid });
+      const input: NewOrder = { customer: customer.trim(), note: note.trim(),
+        items: selected.map(product => ({ productId: product.id, quantity: quantities[product.id], unit: units[product.id] ?? 'un' })),
+        finalTotal, paid };
+      if (order && onUpdate) await onUpdate(order.id, input); else await onCreate(input);
       onClose();
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : 'Não foi possível criar o pedido.');
+      setError(failure instanceof Error ? failure.message : 'Não foi possível salvar o pedido.');
     } finally { setBusy(false); }
   }
 
-  return <Modal title="Criar pedido" subtitle="Escolha os itens e confira o pagamento antes de salvar." onClose={onClose} wide>
+  return <Modal title={order ? `Editar pedido #${String(order.number).padStart(4, '0')}` : 'Criar pedido'} subtitle="Ajuste quantidades, medidas e pagamento antes de salvar." onClose={onClose} wide>
     <div className="order-modal-grid">
       <section className="picker-panel">
         <div className="picker-toolbar">
@@ -65,17 +87,20 @@ export function OrderModal({ products, onClose, onCreate, onImport }: {
         <div className="picker-list">
           {!products.length && <div className="modal-empty"><ShoppingBag size={30} /><h3>Seu catálogo está vazio</h3><p>Importe os produtos do estoque antes de criar o primeiro pedido.</p><button className="button button-secondary" onClick={onImport}>Importar produtos</button></div>}
           {products.length > 0 && filtered.length === 0 && <div className="modal-empty"><Search size={28} /><h3>Nenhum produto encontrado</h3><p>Tente outro nome ou código.</p></div>}
-          {filtered.map(product => <div className="picker-item" key={product.id}>
-            <div className={`product-avatar ${product.isKit ? 'avatar-kit' : ''}`}>{initials(product.name)}</div>
-            <div className="picker-info"><strong>{product.name}</strong><span>{product.category} · {product.code}</span></div>
-            <strong className="picker-price">{money(product.price)}</strong>
-            <div className="stepper"><button aria-label={`Remover ${product.name}`} onClick={() => changeQuantity(product.id, -1)} disabled={!quantities[product.id]}><Minus size={14} /></button><span>{quantities[product.id] ?? 0}</span><button aria-label={`Adicionar ${product.name}`} onClick={() => changeQuantity(product.id, 1)}><Plus size={14} /></button></div>
-          </div>)}
+          {filtered.map(product => {
+            const options = saleUnits(product); const unit = units[product.id] ?? 'un'; const price = unit === 'un' ? product.price : product.price / Math.max(1, baseContent(product));
+            return <div className="picker-item" key={product.id}>
+              <div className={`product-avatar ${product.isKit ? 'avatar-kit' : ''}`}>{initials(product.name)}</div>
+              <div className="picker-info"><strong>{product.name}</strong><span>{product.category} · {product.code}</span></div>
+              <div className="picker-sale-unit"><strong>{money(price)}</strong>{options.length > 1 && <select aria-label={`Unidade de venda de ${product.name}`} value={unit} onChange={event => setUnits(current => ({ ...current, [product.id]: event.target.value as SaleUnit }))}>{options.map(option => <option key={option} value={option}>por {unitLabel[option]}</option>)}</select>}{options.length === 1 && <small>por unidade</small>}</div>
+              <div className="stepper"><button aria-label={`Remover ${product.name}`} onClick={() => changeQuantity(product.id, -1)} disabled={!quantities[product.id]}><Minus size={14} /></button><input aria-label={`Quantidade ${unitLabel[unit]} de ${product.name}`} inputMode="numeric" value={quantities[product.id] ?? 0} onChange={event => setQuantities(current => ({ ...current, [product.id]: Math.max(0, Math.min(999999, Number(event.target.value) || 0)) }))} /><button aria-label={`Adicionar ${product.name}`} onClick={() => changeQuantity(product.id, 1)}><Plus size={14} /></button></div>
+            </div>;
+          })}
         </div>
       </section>
       <section className="checkout-panel">
-        <div className="checkout-heading"><span className="checkout-icon"><ShoppingBag size={18} /></span><div><h3>Resumo do pedido</h3><p>{selected.length ? `${selected.reduce((sum, item) => sum + quantities[item.id], 0)} item(ns) selecionado(s)` : 'Adicione itens ao lado'}</p></div></div>
-        <div className="selected-lines">{selected.length ? selected.map(product => <div className="selected-line" key={product.id}><span>{quantities[product.id]}× {product.name}</span><strong>{money(product.price * quantities[product.id])}</strong></div>) : <div className="cart-placeholder">Os itens escolhidos aparecem aqui.</div>}</div>
+        <div className="checkout-heading"><span className="checkout-icon"><ShoppingBag size={18} /></span><div><h3>Resumo do pedido</h3><p>{selected.length ? `${selected.reduce((sum, item) => sum + quantities[item.id], 0)} item(ns)/medida(s)` : 'Adicione itens ao lado'}</p></div></div>
+        <div className="selected-lines">{selected.length ? selected.map(product => { const unit = units[product.id] ?? 'un'; return <div className="selected-line" key={product.id}><span>{quantities[product.id]} {unitLabel[unit]} · {product.name}</span><strong>{money(priceFor(product) * quantities[product.id])}</strong></div>; }) : <div className="cart-placeholder">Os itens escolhidos aparecem aqui.</div>}</div>
         <div className="subtotal-line"><span>Valor sugerido</span><strong>{money(subtotal)}</strong></div>
         <div className="form-grid">
           <label className="field"><span>Cliente ou mesa <small>opcional</small></span><input value={customer} onChange={event => setCustomer(event.target.value)} placeholder="Ex.: Mesa 04" /></label>
@@ -88,7 +113,7 @@ export function OrderModal({ products, onClose, onCreate, onImport }: {
         {editedFinal !== null && <button className="reset-price" onClick={() => setEditedFinal(null)}><RotateCcw size={13} /> Usar valor sugerido</button>}
         <div className={`change-box ${remaining > 0 ? 'change-pending' : ''}`}><div><span>{remaining > 0 ? 'Falta receber' : 'Troco a devolver'}</span><strong>{money(remaining > 0 ? remaining : change)}</strong></div><Sparkles size={21} /></div>
         {error && <p className="form-error" role="alert">{error}</p>}
-        <button className="button button-primary checkout-submit" onClick={submit} disabled={busy || !selected.length}>{busy ? 'Salvando...' : 'Criar pedido'}</button>
+        <button className="button button-primary checkout-submit" onClick={submit} disabled={busy || !selected.length}>{busy ? 'Salvando...' : order ? 'Salvar alterações' : 'Criar pedido'}</button>
       </section>
     </div>
   </Modal>;

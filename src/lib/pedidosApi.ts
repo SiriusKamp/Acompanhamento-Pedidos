@@ -11,11 +11,13 @@ export interface StockProduct {
   category: string;
   isKit: boolean;
   suggestedPrice: number | null;
+  contentQuantity: number | null;
+  contentUnit: string | null;
 }
 export interface NewOrder {
   customer: string;
   note: string;
-  items: Array<{ productId: string; quantity: number }>;
+  items: Array<{ productId: string; quantity: number; unit: 'un' | 'ml' | 'g' }>;
   finalTotal: number;
   paid: number;
 }
@@ -112,6 +114,13 @@ export async function createOrder(stockId: string, boardId: string, order: NewOr
   return result<Order>(data, error);
 }
 
+export async function updateOrder(stockId: string, boardId: string, orderId: string, order: NewOrder): Promise<Order> {
+  const { data, error } = await supabase.rpc('orders_update_board', {
+    p_stock_id: stockId, p_board_id: boardId, p_order_id: orderId, p_data: order,
+  });
+  return result<Order>(data, error);
+}
+
 export async function changeOrderStatus(stockId: string, boardId: string, id: string, status: OrderStatus): Promise<Order> {
   const { data, error } = await supabase.rpc('orders_change_status_board', {
     p_stock_id: stockId, p_board_id: boardId, p_order_id: id, p_status: status,
@@ -123,18 +132,20 @@ export async function getStockProducts(stockId: string, stockName: string): Prom
   const rows: StockProduct[] = [];
   for (let page = 0; ; page++) {
     const { data, error } = await supabase.from('product_catalog')
-      .select('id,name,sku,type_name,is_kit,suggested_sale_price,next_sale')
+      .select('id,name,sku,type_name,is_kit,suggested_sale_price,next_sale,content_quantity,content_unit')
       .eq('stock_id', stockId).eq('active', true)
       .order('name').order('id').range(page * 500, page * 500 + 499);
     const batch = result<Array<{
       id: string; name: string; sku: string; type_name: string | null;
       is_kit: boolean; suggested_sale_price: number | null; next_sale: number | null;
+      content_quantity: number | null; content_unit: string | null;
     }>>(data ?? [], error);
     rows.push(...batch.map(row => ({
       sourceProductId: row.id, name: row.name, code: row.sku,
       sourceStockId: stockId, sourceStockName: stockName,
       category: row.type_name ?? 'Sem categoria', isKit: row.is_kit,
       suggestedPrice: row.suggested_sale_price ?? row.next_sale,
+      contentQuantity: row.content_quantity, contentUnit: row.content_unit,
     })));
     if (batch.length < 500) return rows;
   }

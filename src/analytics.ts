@@ -47,6 +47,7 @@ export interface ProductRank {
   name: string;
   code: string | null;
   quantity: number;
+  quantityUnit?: string;
   revenue: number;
   profit: number;
 }
@@ -96,6 +97,7 @@ export interface ProductAnalytics {
   isKit: boolean;
   orders: number;
   quantity: number;
+  quantityUnit?: string;
   revenue: number;
   cost: number | null;
   profit: number | null;

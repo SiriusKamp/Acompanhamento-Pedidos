@@ -1,9 +1,9 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { ArrowDownToLine, ArrowLeft, BarChart3, Bell, BellRing, CheckCheck, ChevronRight, CircleX, Clock3, LayoutDashboard, LoaderCircle, LogOut, Package, Plus, RefreshCw, Search, ShoppingBag, Sparkles, Wallet, Zap } from 'lucide-react';
+import { ArrowDownToLine, ArrowLeft, BarChart3, Bell, BellRing, CheckCheck, ChevronRight, CircleX, Clock3, LayoutDashboard, LoaderCircle, LogOut, Package, Pencil, Plus, RefreshCw, Search, ShoppingBag, Sparkles, Wallet, Zap } from 'lucide-react';
 import type { ItemPreset, Order, OrderBoard, OrderStatus, Product } from './model';
 import { elapsedLabel, initials, money, parseAmount, statusLabels, timeLabel } from './model';
-import { createOrder, changeOrderStatus, createOrderBoard, createStock, deleteItemPreset, getItemPresets, getOrderBoards, getOrders, getProducts, getStocks, saveItemPreset, updateProductPrice, type NewOrder, type Stock } from './lib/pedidosApi';
+import { createOrder, updateOrder, changeOrderStatus, createOrderBoard, createStock, deleteItemPreset, getItemPresets, getOrderBoards, getOrders, getProducts, getStocks, saveItemPreset, updateProductPrice, type NewOrder, type Stock } from './lib/pedidosApi';
 import { supabase } from './lib/supabase';
 import { OrderModal } from './components/OrderModal';
 import { ImportModal } from './components/ImportModal';
@@ -54,8 +54,8 @@ function nextActions(status: OrderStatus): Array<{ status: OrderStatus; label: s
   return actions[status];
 }
 
-function OrderCard({ order, onStatus, busy, now, isNew }: {
-  order: Order; onStatus: (id: string, status: OrderStatus) => void; busy: boolean; now: number; isNew: boolean;
+function OrderCard({ order, onStatus, onEdit, busy, now, isNew }: {
+  order: Order; onStatus: (id: string, status: OrderStatus) => void; onEdit: (order: Order) => void; busy: boolean; now: number; isNew: boolean;
 }) {
   const remaining = Math.max(0, order.finalTotal - order.paid);
   const change = Math.max(0, order.paid - order.finalTotal);
@@ -64,9 +64,9 @@ function OrderCard({ order, onStatus, busy, now, isNew }: {
     <span className="order-elapsed" aria-label={`Tempo desde a criação: ${elapsedLabel(order.createdAt, now)}`}><Clock3 size={15} /> {elapsedLabel(order.createdAt, now)}</span>
     <h3>{order.customer || 'Cliente sem nome'}</h3>
     {order.note && <p className="order-note">{order.note}</p>}
-    <div className="order-items">{order.items.map((item, index) => <div className="order-item" key={`${item.productId}-${index}`}><span className="order-item-quantity">{item.quantity}×</span><strong className="order-item-name">{item.name}{item.sourceStockName && <small className="order-stock-origin">{item.sourceStockName}</small>}</strong><span className="order-item-price">{money(item.quantity * item.unitPrice)}</span></div>)}</div>
+    <div className="order-items">{order.items.map((item, index) => <div className="order-item" key={`${item.productId}-${index}`}><span className="order-item-quantity">{item.quantity}<small>{item.unit ?? 'un'}</small></span><strong className="order-item-name">{item.name}{item.sourceStockName && <small className="order-stock-origin">{item.sourceStockName}</small>}</strong><span className="order-item-price">{money(item.quantity * item.unitPrice)}</span></div>)}</div>
     <div className="order-financial"><div><span>Total</span><strong>{money(order.finalTotal)}</strong></div><small className={remaining > 0 ? 'payment-due' : 'payment-done'}>{remaining > 0 ? `Falta ${money(remaining)}` : change > 0 ? `Troco ${money(change)}` : 'Pagamento completo'}</small></div>
-    {nextActions(order.status).length > 0 && <div className="card-actions">{nextActions(order.status).map(action => <button key={action.status} className={action.primary ? 'card-action-primary' : 'card-action-secondary'} disabled={busy} onClick={() => onStatus(order.id, action.status)}>{action.back && <ArrowLeft size={15} />}{action.label}{action.primary && !action.back && <ChevronRight size={15} />}</button>)}</div>}
+    {order.status !== 'finished' && <div className="card-actions"><button className="card-action-secondary" disabled={busy} onClick={() => onEdit(order)}><Pencil size={15} /> Editar</button>{nextActions(order.status).map(action => <button key={action.status} className={action.primary ? 'card-action-primary' : 'card-action-secondary'} disabled={busy} onClick={() => onStatus(order.id, action.status)}>{action.back && <ArrowLeft size={15} />}{action.label}{action.primary && !action.back && <ChevronRight size={15} />}</button>)}</div>}
     {order.status === 'finished' && <p className={`order-locked inventory-${order.inventoryStatus ?? 'pending'}`}>{
       order.inventoryStatus === 'settled' ? 'Finalizado · estoque baixado'
         : order.inventoryStatus === 'partial' ? 'Finalizado · baixa parcial: confira o dashboard'
@@ -75,14 +75,14 @@ function OrderCard({ order, onStatus, busy, now, isNew }: {
   </article>;
 }
 
-function BoardColumn({ status, orders, onStatus, busyId, now, mobileActive, newOrderIds }: {
-  status: OrderStatus; orders: Order[]; onStatus: (id: string, status: OrderStatus) => void;
+function BoardColumn({ status, orders, onStatus, onEdit, busyId, now, mobileActive, newOrderIds }: {
+  status: OrderStatus; orders: Order[]; onStatus: (id: string, status: OrderStatus) => void; onEdit: (order: Order) => void;
   busyId: string | null; now: number; mobileActive: boolean; newOrderIds: Set<string>;
 }) {
   const Icon = statusIcon(status);
   return <section className={`board-column column-${status} ${mobileActive ? '' : 'mobile-hidden'}`} aria-label={statusLabels[status]}>
     <div className="column-head"><div className="column-title"><span className="status-icon"><Icon size={17} /></span><h2>{statusLabels[status]}</h2></div><span className="count-badge">{orders.length}</span></div>
-    <div className="column-content">{orders.length ? orders.map(order => <OrderCard key={order.id} order={order} onStatus={onStatus} busy={busyId === order.id} now={now} isNew={newOrderIds.has(order.id)} />)
+    <div className="column-content">{orders.length ? orders.map(order => <OrderCard key={order.id} order={order} onStatus={onStatus} onEdit={onEdit} busy={busyId === order.id} now={now} isNew={newOrderIds.has(order.id)} />)
       : <div className="column-empty"><div><Icon size={24} /></div><p>Nenhum pedido<br />{statusLabels[status].toLowerCase()}</p></div>}</div>
   </section>;
 }
@@ -139,6 +139,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [modal, setModal] = useState<'order' | 'import' | null>(null);
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [orderSearch, setOrderSearch] = useState('');
   const [productSearch, setProductSearch] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -374,6 +375,13 @@ export default function App() {
     setToast(`Pedido #${String(created.number).padStart(4, '0')} criado.`);
   }
 
+  async function saveOrder(orderId: string, input: NewOrder) {
+    const updated = await updateOrder(stockId, boardId, orderId, input);
+    ordersVersionRef.current++;
+    setOrders(current => current.map(order => order.id === orderId ? updated : order));
+    setToast(`Pedido #${String(updated.number).padStart(4, '0')} atualizado.`);
+  }
+
   async function updateStatus(id: string, status: OrderStatus) {
     busyIdRef.current = id;
     ordersVersionRef.current++;
@@ -469,16 +477,16 @@ export default function App() {
             <BellRing size={22} /><strong>{counts.waiting}</strong><div><b>{counts.waiting === 1 ? 'pedido aguardando' : 'pedidos aguardando'}</b><span>{counts.waiting ? 'A cozinha já pode iniciar o preparo.' : 'Nenhum pedido novo neste kanban.'}</span></div>
           </div>
           <nav className="mobile-stages" aria-label="Etapas dos pedidos">{statuses.map(status => <button key={status} aria-pressed={mobileStage === status} className={mobileStage === status ? `active stage-${status}` : `stage-${status}`} onClick={() => setMobileStage(status)}>{statusLabels[status]} <b>{counts[status]}</b></button>)}</nav>
-          {loading ? <div className="loading-panel"><LoaderCircle className="spin" size={25} /><strong>Carregando pedidos e produtos...</strong>{slow && <span>A consulta está demorando. Aguarde mais um pouco.</span>}</div> : error ? <div className="error-panel"><strong>Não foi possível carregar os dados.</strong><p>{error}</p><div><button className="button button-secondary" onClick={() => setReload(value => value + 1)}><RefreshCw size={16} /> Tentar novamente</button><button className="button button-primary" onClick={() => setModal('import')}>Importar produtos</button></div></div> : <div className="board" aria-label="Pedidos por status">{statuses.map(status => <BoardColumn key={status} status={status} orders={filteredOrders.filter(order => order.status === status)} onStatus={updateStatus} busyId={busyId} now={now} mobileActive={mobileStage === status} newOrderIds={newOrderIds} />)}</div>}
+          {loading ? <div className="loading-panel"><LoaderCircle className="spin" size={25} /><strong>Carregando pedidos e produtos...</strong>{slow && <span>A consulta está demorando. Aguarde mais um pouco.</span>}</div> : error ? <div className="error-panel"><strong>Não foi possível carregar os dados.</strong><p>{error}</p><div><button className="button button-secondary" onClick={() => setReload(value => value + 1)}><RefreshCw size={16} /> Tentar novamente</button><button className="button button-primary" onClick={() => setModal('import')}>Importar produtos</button></div></div> : <div className="board" aria-label="Pedidos por status">{statuses.map(status => <BoardColumn key={status} status={status} orders={filteredOrders.filter(order => order.status === status)} onStatus={updateStatus} onEdit={order => { setEditingOrder(order); setModal('order'); }} busyId={busyId} now={now} mobileActive={mobileStage === status} newOrderIds={newOrderIds} />)}</div>}
         </> : tab === 'products' ? <><section className="catalog-hero"><div><span className="section-kicker">SEU CATÁLOGO</span><h1>Produtos & preços</h1><p>Os itens importados do estoque ficam prontos para entrar nos pedidos.</p></div><button className="button button-primary" onClick={() => setModal('import')}><ArrowDownToLine size={18} /> Importar produtos</button></section>
           <div className="catalog-toolbar"><label className="search-field"><Search size={18} /><input aria-label="Pesquisar produtos" placeholder="Buscar por nome, código ou categoria" value={productSearch} onChange={event => setProductSearch(event.target.value)} /></label><span>{filteredProducts.length} produto{filteredProducts.length === 1 ? '' : 's'}</span></div>
           {loading ? <div className="loading-panel"><LoaderCircle className="spin" size={25} /> Carregando catálogo...</div> : error ? <div className="error-panel"><strong>Não foi possível carregar o catálogo.</strong><p>{error}</p><button className="button button-primary" onClick={() => setModal('import')}>Importar produtos</button></div> : filteredProducts.length ? <div className="catalog-grid">{filteredProducts.map(product => <CatalogCard key={product.id} product={product} onSave={savePrice} busy={busyId === product.id} />)}</div> : <div className="catalog-empty"><div><Package size={31} /></div><h2>{products.length ? 'Nenhum item encontrado' : 'Seu catálogo começa aqui'}</h2><p>{products.length ? 'Tente outro nome ou código.' : 'Importe itens do estoque e defina os preços que vão aparecer nos pedidos.'}</p><button className="button button-primary" onClick={() => setModal('import')}><ArrowDownToLine size={17} /> Importar produtos</button></div>}
-        </> : <Suspense fallback={<div className="loading-panel analytics-loading"><LoaderCircle className="spin" size={25} /><strong>Carregando análises...</strong></div>}><AnalyticsDashboard stockId={stockId} boards={boards} /></Suspense>}
+        </> : <Suspense fallback={<div className="loading-panel analytics-loading"><LoaderCircle className="spin" size={25} /><strong>Carregando análises...</strong></div>}><AnalyticsDashboard stockId={stockId} boards={boards} catalogProducts={products} /></Suspense>}
       </div>
     </main>
     {tab === 'orders' && <button className="mobile-create-order" onClick={() => setModal('order')}><Plus size={21} /> Criar pedido</button>}
     {toast && <div className="toast" role="status"><CheckCheck size={17} />{toast}</div>}
-    {modal === 'order' && <OrderModal products={products} onClose={() => setModal(null)} onCreate={addOrder} onImport={() => setModal('import')} />}
+    {modal === 'order' && <OrderModal products={products} order={editingOrder ?? undefined} onClose={() => { setModal(null); setEditingOrder(null); }} onCreate={addOrder} onUpdate={saveOrder} onImport={() => setModal('import')} />}
     {modal === 'import' && <ImportModal stockId={stockId} boardId={boardId} stockName={boards.find(board => board.id === boardId)?.name ?? 'atual'} stocks={stocks} currentProducts={products} presets={presets} onClose={() => setModal(null)} onImported={imported} onSavePreset={savePreset} onDeletePreset={removePreset} />}
     {createBoardOpen && <NewBoardModal onClose={() => setCreateBoardOpen(false)} onCreate={addBoard} />}
   </div>;

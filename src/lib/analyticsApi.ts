@@ -50,6 +50,16 @@ export async function getAnalyticsProducts(
   return unwrap<ProductAnalyticsResult>(data, error, 'produtos');
 }
 
+export async function getAllAnalyticsProducts(stockId: string, filters: AnalyticsFilters): Promise<ProductAnalyticsResult> {
+  const first = await getAnalyticsProducts(stockId, filters, 'profit', 'desc', 100, 0);
+  const rows = [...first.rows];
+  for (let offset = 100; offset < first.total; offset += 100) {
+    const page = await getAnalyticsProducts(stockId, filters, 'profit', 'desc', 100, offset);
+    rows.push(...page.rows);
+  }
+  return { ...first, rows };
+}
+
 export async function getAnalyticsOrders(
   stockId: string, filters: AnalyticsFilters, limit = 50, offset = 0,
 ): Promise<OrderAnalyticsResult> {
