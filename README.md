@@ -57,7 +57,10 @@ preserva o frontend HTTP anterior e seu contrato `API_CONTRACT.md`.
 11. Em bancos que já receberam a migration de medidas, execute
    [supabase/migration_order_analytics_output_ambiguity_fix.sql](supabase/migration_order_analytics_output_ambiguity_fix.sql)
    para corrigir a ambiguidade dos parâmetros de saída nas consultas analíticas.
-12. Copie `.env.example` para `.env.local` e use a **mesma**
+12. Execute [supabase/migration_order_analytics_unit_rankings.sql](supabase/migration_order_analytics_unit_rankings.sql)
+   para calcular o ranking “Mais vendidos” pelas quantidades registradas em
+   `un`, sem converter embalagens vendidas em unidades para ml/g.
+13. Copie `.env.example` para `.env.local` e use a **mesma**
    `VITE_SUPABASE_URL` e chave pública/anon do monólito Estoque. A
    configuração local deste checkout já foi copiada da instalação do Estoque.
    O arquivo `.env.local` é ignorado pelo Git. Nunca use a senha do Postgres

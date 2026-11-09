@@ -1,5 +1,5 @@
 import type {
-  AnalyticsFilters, AnalyticsOverview, InventoryHealth, OrderAnalyticsDetail, OrderAnalyticsResult,
+  AnalyticsFilters, AnalyticsOverview, InventoryHealth, OrderAnalyticsDetail, OrderAnalyticsResult, ProductRank,
   ProductAnalyticsResult, ProductSort,
 } from '../analytics';
 import { supabase } from './supabase';
@@ -58,6 +58,13 @@ export async function getAllAnalyticsProducts(stockId: string, filters: Analytic
     rows.push(...page.rows);
   }
   return { ...first, rows };
+}
+
+export async function getAnalyticsUnitRankings(stockId: string, filters: AnalyticsFilters): Promise<ProductRank[]> {
+  const { data, error } = await supabase.rpc('orders_analytics_unit_rankings', {
+    ...baseFilters(stockId, filters),
+  });
+  return unwrap<ProductRank[]>(data, error, 'ranking por unidades vendidas');
 }
 
 export async function getAnalyticsOrders(
