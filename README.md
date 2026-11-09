@@ -54,7 +54,10 @@ preserva o frontend HTTP anterior e seu contrato `API_CONTRACT.md`.
    para editar pedidos ainda não finalizados, vender itens por `ml` ou `g`,
    baixar essas medidas do estoque e normalizar quantidades nas análises.
    Pedidos finalizados permanecem bloqueados para proteger o histórico FIFO.
-11. Copie `.env.example` para `.env.local` e use a **mesma**
+11. Em bancos que já receberam a migration de medidas, execute
+   [supabase/migration_order_analytics_output_ambiguity_fix.sql](supabase/migration_order_analytics_output_ambiguity_fix.sql)
+   para corrigir a ambiguidade dos parâmetros de saída nas consultas analíticas.
+12. Copie `.env.example` para `.env.local` e use a **mesma**
    `VITE_SUPABASE_URL` e chave pública/anon do monólito Estoque. A
    configuração local deste checkout já foi copiada da instalação do Estoque.
    O arquivo `.env.local` é ignorado pelo Git. Nunca use a senha do Postgres

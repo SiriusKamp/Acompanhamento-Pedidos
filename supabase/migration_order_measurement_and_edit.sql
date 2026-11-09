@@ -226,21 +226,21 @@ BEGIN
     LEFT JOIN public.products p ON p.id=coalesce(i.product_id,c.product_id)
     LEFT JOIN public.order_inventory_settlements s ON s.order_item_id=i.id
   ), raw AS (
-    SELECT source.*,coalesce(final_revenue_snapshot,CASE WHEN suggested_total>0 THEN final_total*raw_listed/suggested_total
-      WHEN quantity_total>0 THEN final_total*raw_quantity/quantity_total ELSE 0 END) raw_revenue
+    SELECT source.*,coalesce(source.final_revenue_snapshot,CASE WHEN source.suggested_total>0 THEN source.final_total*source.raw_listed/source.suggested_total
+      WHEN source.quantity_total>0 THEN source.final_total*source.raw_quantity/source.quantity_total ELSE 0 END) raw_revenue
     FROM source
   ), allocations AS (
-    SELECT raw.*,CASE WHEN line_position=line_count THEN final_total-coalesce(sum(round(raw_revenue,2)) OVER(PARTITION BY id ORDER BY source_line_id ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING),0)
-      ELSE round(raw_revenue,2) END line_revenue FROM raw
+    SELECT raw.*,CASE WHEN raw.line_position=raw.line_count THEN raw.final_total-coalesce(sum(round(raw.raw_revenue,2)) OVER(PARTITION BY raw.id ORDER BY raw.source_line_id ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING),0)
+      ELSE round(raw.raw_revenue,2) END line_revenue FROM raw
   ), legacy_costs AS (
     SELECT o.id order_cost_id,item.product_id cost_product_id,sum(abs(m.quantity)*m.cost_per_base) total_cost
     FROM selected o JOIN public.inventory_operation_items item ON item.operation_id=o.inventory_operation_id
     JOIN public.inventory_movements m ON m.item_id=item.id GROUP BY o.id,item.product_id
   ), calculated AS (
-    SELECT a.*,CASE WHEN final_cost_snapshot IS NOT NULL THEN final_cost_snapshot
-      WHEN settlement_status='settled' AND settlement_cost IS NOT NULL THEN settlement_cost
-      WHEN settlement_status='partial' THEN coalesce(settlement_cost,0)+CASE WHEN manual_unit_cost IS NOT NULL THEN manual_unit_cost*coalesce(pending_quantity,0) ELSE 0 END
-      WHEN cost_source IN ('manual','mixed') AND unit_cost_snapshot IS NOT NULL THEN unit_cost_snapshot*raw_quantity
+    SELECT a.*,CASE WHEN a.final_cost_snapshot IS NOT NULL THEN a.final_cost_snapshot
+      WHEN a.settlement_status='settled' AND a.settlement_cost IS NOT NULL THEN a.settlement_cost
+      WHEN a.settlement_status='partial' THEN coalesce(a.settlement_cost,0)+CASE WHEN a.manual_unit_cost IS NOT NULL THEN a.manual_unit_cost*coalesce(a.pending_quantity,0) ELSE 0 END
+      WHEN a.cost_source IN ('manual','mixed') AND a.unit_cost_snapshot IS NOT NULL THEN a.unit_cost_snapshot*a.raw_quantity
       ELSE legacy_costs.total_cost END line_cost
     FROM allocations a LEFT JOIN legacy_costs ON legacy_costs.order_cost_id=a.id AND legacy_costs.cost_product_id=a.source_product_id
   )
