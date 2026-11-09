@@ -260,6 +260,12 @@
 /* Multi-stock source labels in the import picker and order cards. */
 .import-stock-filter{min-width:145px;height:40px;padding:0 10px;border:1px solid #e5e8f0;border-radius:10px;background:#fff;color:#51576a;font-size:12px}
 .import-stock-name{display:block;margin-top:3px;color:#7b6ce1;font-size:10px;font-weight:700}
+
+/* Keep decision quadrant labels legible and reserve a clear edge around them. */
+.quadrant-label{z-index:3;max-width:42%;padding:5px 8px;border:1px solid #dfe3ed;border-radius:8px;background:rgba(255,255,255,.94);box-shadow:0 2px 8px #26314a16;color:#687087;font-size:9px;font-weight:800;line-height:1.25;pointer-events:none}
+.quadrant-bubble{z-index:1}
+[data-theme="dark"] .quadrant-label,[data-theme="neon"] .quadrant-label{background:rgba(24,28,43,.96);border-color:var(--border);color:var(--text);box-shadow:0 2px 10px #0006}
+@media(max-width:760px){.quadrant-label{max-width:44%;padding:4px 6px;font-size:8px;letter-spacing:0}.q-top-right,.q-bottom-right{right:8px}.q-top-left,.q-bottom-left{left:8px}}
 .order-stock-origin{display:block;margin-top:2px;color:#9298a8;font-size:9px;font-weight:600}
 .catalog-stock-origin{display:block;margin-top:4px;color:#7b6ce1;font-size:10px;font-weight:700}
 .order-product-cost,.order-cost-snapshot,.order-cost-unavailable{display:block;margin-top:3px;font-size:9px;font-weight:700;color:#438664}

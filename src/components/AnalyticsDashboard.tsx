@@ -238,7 +238,9 @@ function ProductQuadrant({ products, periodDays, targetMargin, targetCoverage, o
   const demand = visible.map(product => product.dailyVelocity); const median = quartile(demand, .5); const low = quartile(demand, .25);
   return <section className="analytics-quadrant-card"><div className="analytics-card-heading"><div><span>MAPA DE DECISÃO</span><h3>Demanda × margem</h3></div><small>Bolha = receita</small></div><div className="analytics-quadrant"><i className="quadrant-horizontal" /><i className="quadrant-vertical" /><b className="quadrant-label q-top-left">Promover</b><b className="quadrant-label q-top-right">Priorizar produção</b><b className="quadrant-label q-bottom-left">Reavaliar</b><b className="quadrant-label q-bottom-right">Revisar preço</b>{visible.map(product => {
     const insight = recommendation(product, periodDays, targetMargin, targetCoverage, median, low);
-    const left = 5 + product.quantity / maxDemand * 89; const bottom = 6 + Math.min(88, Math.max(0, (product.margin ?? 0) / Math.max(1, targetMargin * 2) * 50 + 25));
+    const left = 22 + product.quantity / maxDemand * 56;
+    const marginPosition = (product.margin ?? 0) / Math.max(1, targetMargin * 2) * 50 + 25;
+    const bottom = 26 + Math.min(48, Math.max(0, marginPosition));
     const size = 23 + product.revenue / maxRevenue * 24;
     return <button key={product.productId} className={`quadrant-bubble ${insight.kind}`} style={{ left: `${left}%`, bottom: `${bottom}%`, width: size, height: size }} onClick={() => onSelect(product)} title={`${product.name}: ${insight.title}`}><span>{product.name.slice(0, 2).toUpperCase()}</span></button>;
   })}</div></section>;
