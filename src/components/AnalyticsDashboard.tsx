@@ -172,9 +172,10 @@ function RankList({ title, rows, value }: { title: string; rows: ProductRank[]; 
   return <section className="analytics-rank-card"><h3>{title}</h3>{rows.length ? <ol>{rows.map((row, index) => <li key={row.productId}><b>{index + 1}</b><div><strong>{row.name}</strong><small>{row.code || 'Sem código'}</small></div><span>{value(row)}</span></li>)}</ol> : <p>Nenhuma venda no período.</p>}</section>;
 }
 
-function AnalyticsFiltersBar({ filters, boards, onChange, targetMargin, setTargetMargin, targetCoverage, setTargetCoverage }: {
+function AnalyticsFiltersBar({ filters, boards, onChange, targetMargin, setTargetMargin, targetCoverage, setTargetCoverage, view, sourceStocks, overviewSourceStock, onOverviewSourceStockChange }: {
   filters: AnalyticsFilters; boards: OrderBoard[]; onChange: (next: AnalyticsFilters) => void;
   targetMargin: number; setTargetMargin: (value: number) => void; targetCoverage: number; setTargetCoverage: (value: number) => void;
+  view: AnalyticsView; sourceStocks: [string, string][]; overviewSourceStock: string; onOverviewSourceStockChange: (value: string) => void;
 }) {
   function setPeriod(period: AnalyticsFilters['period']) {
     if (period === 'custom') { onChange({ ...filters, period }); return; }
@@ -192,6 +193,7 @@ function AnalyticsFiltersBar({ filters, boards, onChange, targetMargin, setTarge
       <label><input type="checkbox" checked={!filters.boardIds.length} onChange={() => onChange({ ...filters, boardIds: [] })} /> Todos os kanbans</label>
       {boards.map(board => <label key={board.id}><input type="checkbox" checked={filters.boardIds.includes(board.id)} onChange={() => toggleBoard(board.id)} /> {board.name}</label>)}
     </div></details>
+    {view === 'overview' && sourceStocks.length > 0 && <label className="analytics-filter"><span>Estoque de origem</span><select aria-label="Filtrar visão geral por estoque" value={overviewSourceStock} onChange={event => onOverviewSourceStockChange(event.target.value)}><option value="all">Todos os estoques</option>{sourceStocks.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label>}
     <details className="analytics-board-filter analytics-settings"><summary>Metas <ChevronDown size={15} /></summary><div>
       <label>Margem mínima <select value={targetMargin} onChange={event => setTargetMargin(Number(event.target.value))}>{[10, 15, 20, 25, 30, 40].map(value => <option key={value} value={value}>{value}%</option>)}</select></label>
       <label>Cobertura alvo <select value={targetCoverage} onChange={event => setTargetCoverage(Number(event.target.value))}>{[3, 7, 14, 30].map(value => <option key={value} value={value}>{value} dias</option>)}</select></label>
@@ -284,29 +286,31 @@ export function AnalyticsDashboard({ stockId, boards, catalogProducts }: { stock
   const [productDirection, setProductDirection] = useState<'asc' | 'desc'>('desc');
   const [productCategory, setProductCategory] = useState('all');
   const [productSourceStock, setProductSourceStock] = useState('all');
+  const [overviewSourceStock, setOverviewSourceStock] = useState('all');
   const deferredSearch = useDeferredValue(filters.search);
 
   useEffect(() => { localStorage.setItem('analytics-target-margin', String(targetMargin)); }, [targetMargin]);
   useEffect(() => { localStorage.setItem('analytics-target-coverage', String(targetCoverage)); }, [targetCoverage]);
-  useEffect(() => { setSelectedProduct(null); setSelectedOrder(null); }, [stockId]);
+  useEffect(() => { setSelectedProduct(null); setSelectedOrder(null); setOverviewSourceStock('all'); }, [stockId]);
 
   useEffect(() => {
     let active = true;
     const queryFilters = { ...filters, search: deferredSearch };
+    const sourceStockId = view === 'overview' && overviewSourceStock !== 'all' ? overviewSourceStock : null;
     setLoading(true); setError('');
     void Promise.all([
-      getAnalyticsOverview(stockId, queryFilters),
+      getAnalyticsOverview(stockId, queryFilters, sourceStockId),
       getAllAnalyticsProducts(stockId, queryFilters),
-      getAnalyticsUnitRankings(stockId, queryFilters),
+      getAnalyticsUnitRankings(stockId, queryFilters, sourceStockId),
       getAnalyticsOrders(stockId, queryFilters),
-      getInventoryHealth(stockId, queryFilters),
+      getInventoryHealth(stockId, queryFilters, sourceStockId),
     ]).then(([nextOverview, nextProducts, nextUnitRankings, nextOrders, nextInventoryHealth]) => {
       if (!active) return;
       setOverview(nextOverview); setInventoryHealth(nextInventoryHealth); setProducts(nextProducts.rows); setProductPeriodDays(nextProducts.periodDays); setUnitRankings(nextUnitRankings); setOrders(nextOrders.rows); setLastRefresh(new Date());
     }).catch(reason => { if (active) setError(reason instanceof Error ? reason.message : 'Não foi possível consultar as análises.'); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [stockId, filters.boardIds.join(','), filters.from, filters.to, filters.productKind, deferredSearch, refreshKey]);
+  }, [stockId, view, overviewSourceStock, filters.boardIds.join(','), filters.from, filters.to, filters.productKind, deferredSearch, refreshKey]);
 
   useEffect(() => {
     let timer: number | undefined;
@@ -321,9 +325,13 @@ export function AnalyticsDashboard({ stockId, boards, catalogProducts }: { stock
   const demand = products.map(product => product.dailyVelocity);
   const demandMedian = quartile(demand, .5); const demandLow = quartile(demand, .25);
   const selectedInsight = selectedProduct ? recommendation(selectedProduct, productPeriodDays, targetMargin, targetCoverage, demandMedian, demandLow) : null;
-  const insights = useMemo(() => products.map(product => ({ product, insight: recommendation(product, productPeriodDays, targetMargin, targetCoverage, demandMedian, demandLow) }))
-    .filter(value => !['healthy', 'incomplete'].includes(value.insight.kind))
-    .sort((a, b) => (b.product.profit ?? -Infinity) - (a.product.profit ?? -Infinity)).slice(0, 6), [products, productPeriodDays, targetMargin, targetCoverage, demandMedian, demandLow]);
+  const insights = useMemo(() => {
+    const sourceByProduct = new Map(catalogProducts.filter(product => product.sourceProductId).map(product => [product.sourceProductId!, product.sourceStockId]));
+    return products.filter(product => overviewSourceStock === 'all' || sourceByProduct.get(product.productId) === overviewSourceStock)
+      .map(product => ({ product, insight: recommendation(product, productPeriodDays, targetMargin, targetCoverage, demandMedian, demandLow) }))
+      .filter(value => !['healthy', 'incomplete'].includes(value.insight.kind))
+      .sort((a, b) => (b.product.profit ?? -Infinity) - (a.product.profit ?? -Infinity)).slice(0, 6);
+  }, [products, catalogProducts, overviewSourceStock, productPeriodDays, targetMargin, targetCoverage, demandMedian, demandLow]);
   const catalogBySourceId = useMemo(() => new Map(catalogProducts.filter(product => product.sourceProductId)
     .map(product => [product.sourceProductId!, product])), [catalogProducts]);
   const categories = useMemo(() => [...new Set(catalogProducts.map(product => product.category).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')), [catalogProducts]);
@@ -347,7 +355,7 @@ export function AnalyticsDashboard({ stockId, boards, catalogProducts }: { stock
 
   return <section className="analytics-page">
     <header className="analytics-hero"><div><span className="section-kicker">ANÁLISE E DECISÃO</span><h1>Vendas que viram<br /><em>decisões melhores.</em></h1><p>Receita, custo FIFO e margem por pedido, kanban e produto.</p></div><div className="analytics-hero-icon"><BarChart3 size={42} /></div></header>
-    <AnalyticsFiltersBar filters={filters} boards={boards} onChange={setFilters} targetMargin={targetMargin} setTargetMargin={setTargetMargin} targetCoverage={targetCoverage} setTargetCoverage={setTargetCoverage} />
+    <AnalyticsFiltersBar filters={filters} boards={boards} onChange={setFilters} targetMargin={targetMargin} setTargetMargin={setTargetMargin} targetCoverage={targetCoverage} setTargetCoverage={setTargetCoverage} view={view} sourceStocks={sourceStocks} overviewSourceStock={overviewSourceStock} onOverviewSourceStockChange={setOverviewSourceStock} />
     <div className="analytics-tabs"><button className={view === 'overview' ? 'active' : ''} onClick={() => setView('overview')}><BarChart3 size={16} /> Visão geral</button><button className={view === 'products' ? 'active' : ''} onClick={() => setView('products')}><Package size={16} /> Produtos</button><button className={view === 'orders' ? 'active' : ''} onClick={() => setView('orders')}><ClipboardList size={16} /> Pedidos</button><button className="analytics-refresh" onClick={() => setRefreshKey(value => value + 1)} disabled={loading}><RefreshCw size={16} className={loading ? 'spin' : ''} /> Atualizar</button></div>
     {lastRefresh && <p className="analytics-refreshed">Atualizado às {lastRefresh.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}. Atualização automática ativa.</p>}
     {loading && !overview ? <div className="loading-panel analytics-loading"><LoaderCircle className="spin" size={25} /><strong>Calculando receita, custo FIFO e lucro...</strong></div> : error ? <div className="error-panel analytics-error"><strong>Não foi possível carregar o dashboard.</strong><p>{error}</p><button className="button button-primary" onClick={() => setRefreshKey(value => value + 1)}><RefreshCw size={16} /> Tentar novamente</button></div> : overview ? <>

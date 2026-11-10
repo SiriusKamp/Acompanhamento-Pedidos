@@ -27,12 +27,15 @@ function baseFilters(stockId: string, filters: AnalyticsFilters) {
   };
 }
 
-export async function getAnalyticsOverview(stockId: string, filters: AnalyticsFilters): Promise<AnalyticsOverview> {
-  const { data, error } = await supabase.rpc('orders_analytics_overview', {
-    ...baseFilters(stockId, filters), p_timezone: 'America/Sao_Paulo',
-  });
+export async function getAnalyticsOverview(stockId: string, filters: AnalyticsFilters, sourceStockId?: string | null): Promise<AnalyticsOverview> {
+  const query = baseFilters(stockId, filters);
+  const { data, error } = sourceStockId
+    ? await supabase.rpc('orders_analytics_overview_source_stock', { ...query, p_source_stock_id: sourceStockId, p_timezone: 'America/Sao_Paulo' })
+    : await supabase.rpc('orders_analytics_overview', { ...query, p_timezone: 'America/Sao_Paulo' });
   const overview = unwrap<AnalyticsOverview>(data, error, 'visão geral');
-  const { data: estimates, error: estimatesError } = await supabase.rpc('orders_analytics_estimate_summary', baseFilters(stockId, filters));
+  const { data: estimates, error: estimatesError } = sourceStockId
+    ? await supabase.rpc('orders_analytics_estimate_summary_source_stock', { ...query, p_source_stock_id: sourceStockId })
+    : await supabase.rpc('orders_analytics_estimate_summary', query);
   if (estimatesError) return overview;
   const estimateSummary = estimates as { estimatedOrders?: number; estimatedItems?: number; estimatedCost?: number };
   return { ...overview, quality: { ...overview.quality, estimatedCostOrders: Number(estimateSummary.estimatedOrders ?? 0),
@@ -65,10 +68,11 @@ export async function getAllAnalyticsProducts(stockId: string, filters: Analytic
   return { ...first, rows };
 }
 
-export async function getAnalyticsUnitRankings(stockId: string, filters: AnalyticsFilters): Promise<ProductRank[]> {
-  const { data, error } = await supabase.rpc('orders_analytics_unit_rankings', {
-    ...baseFilters(stockId, filters),
-  });
+export async function getAnalyticsUnitRankings(stockId: string, filters: AnalyticsFilters, sourceStockId?: string | null): Promise<ProductRank[]> {
+  const query = baseFilters(stockId, filters);
+  const { data, error } = sourceStockId
+    ? await supabase.rpc('orders_analytics_unit_rankings_source_stock', { ...query, p_source_stock_id: sourceStockId })
+    : await supabase.rpc('orders_analytics_unit_rankings', query);
   return unwrap<ProductRank[]>(data, error, 'ranking por unidades vendidas');
 }
 
@@ -88,7 +92,10 @@ export async function getAnalyticsOrderDetail(stockId: string, orderId: string):
   return unwrap<OrderAnalyticsDetail>(data, error, 'detalhe do pedido');
 }
 
-export async function getInventoryHealth(stockId: string, filters: AnalyticsFilters): Promise<InventoryHealth> {
-  const { data, error } = await supabase.rpc('orders_inventory_health', baseFilters(stockId, filters));
+export async function getInventoryHealth(stockId: string, filters: AnalyticsFilters, sourceStockId?: string | null): Promise<InventoryHealth> {
+  const query = baseFilters(stockId, filters);
+  const { data, error } = sourceStockId
+    ? await supabase.rpc('orders_inventory_health_source_stock', { ...query, p_source_stock_id: sourceStockId })
+    : await supabase.rpc('orders_inventory_health', query);
   return unwrap<InventoryHealth>(data, error, 'pendências de estoque');
 }
