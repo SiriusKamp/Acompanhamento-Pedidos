@@ -182,7 +182,7 @@ export async function getStockProducts(stockId: string, stockName: string): Prom
 }
 
 export async function importProducts(
-  stockId: string, boardId: string, items: Array<{ sourceProductId: string; sourceStockId: string; price: number; unitCost?: number | null }>,
+  stockId: string, boardId: string, items: Array<{ sourceProductId: string; sourceStockId: string; price: number; unitCost?: number | null; overwritePrice?: boolean }>,
 ): Promise<Product[]> {
   const imported: Product[] = [];
   for (let start = 0; start < items.length; start += 100) {

@@ -6,7 +6,7 @@ import { money, parseAmount } from '../model';
 import { getStockProducts, importProducts, type Stock, type StockProduct } from '../lib/pedidosApi';
 import { Modal } from './Modal';
 
-type Draft = StockProduct & { selected: boolean; priceText: string; unitCostText: string };
+type Draft = StockProduct & { selected: boolean; priceText: string; unitCostText: string; overwritePrice: boolean; alreadyImported: boolean };
 
 export function ImportModal({ stockId, boardId, stockName, stocks, currentProducts, presets, onClose, onImported, onSavePreset, onDeletePreset }: {
   stockId: string; boardId: string; stockName: string; stocks: Stock[]; currentProducts: Product[]; presets: ItemPreset[];
@@ -34,7 +34,7 @@ export function ImportModal({ stockId, boardId, stockName, stocks, currentProduc
           const saved = previousById.get(product.sourceProductId);
           const existing = currentProducts.find(item => item.sourceProductId === product.sourceProductId
             && item.sourceStockId === product.sourceStockId);
-          return { ...product, selected: saved?.selected ?? !!existing,
+          return { ...product, selected: saved?.selected ?? !!existing, alreadyImported: !!existing, overwritePrice: saved?.overwritePrice ?? false,
             priceText: saved?.priceText ?? (existing?.price ?? product.suggestedPrice ?? 0).toFixed(2),
             unitCostText: saved?.unitCostText ?? (product.suggestedCost !== null
               ? product.suggestedCost.toFixed(2)
@@ -62,6 +62,7 @@ export function ImportModal({ stockId, boardId, stockName, stocks, currentProduc
     setDraft(items => items.map(item => ({
       ...item,
       selected: chosen.has(item.sourceProductId),
+      overwritePrice: chosen.has(item.sourceProductId) || item.overwritePrice,
       priceText: chosen.has(item.sourceProductId)
         ? chosen.get(item.sourceProductId)!.toFixed(2) : item.priceText,
     })));
@@ -112,7 +113,7 @@ export function ImportModal({ stockId, boardId, stockName, stocks, currentProduc
     setBusy(true); setError('');
     try {
       const products = await importProducts(stockId, boardId, selected.map(item => ({
-        sourceProductId: item.sourceProductId, sourceStockId: item.sourceStockId, price: parseAmount(item.priceText),
+        sourceProductId: item.sourceProductId, sourceStockId: item.sourceStockId, price: parseAmount(item.priceText), overwritePrice: item.overwritePrice,
         unitCost: item.unitCostText.trim() ? parseAmount(item.unitCostText) : null,
       })));
       onImported(products); onClose();
@@ -144,8 +145,8 @@ export function ImportModal({ stockId, boardId, stockName, stocks, currentProduc
           <div className="import-price"><label>Preço de venda</label><div className="money-field"><span>R$</span>
             <input inputMode="decimal" aria-label={`Preço de ${item.name}`} value={item.priceText}
               onChange={event => setDraft(items => items.map(row => row.sourceProductId === item.sourceProductId && row.sourceStockId === item.sourceStockId
-                ? { ...row, priceText: event.target.value } : row))} /></div>
-            <small>{item.suggestedPrice !== null ? `Sugerido: ${money(item.suggestedPrice)}` : 'Sem preço sugerido'}</small>
+                ? { ...row, priceText: event.target.value, overwritePrice: true } : row))} /></div>
+            <small>{item.alreadyImported ? 'Preço salvo é mantido; edição manual ou preset pode alterá-lo.' : item.suggestedPrice !== null ? `Sugerido: ${money(item.suggestedPrice)}` : 'Sem preço sugerido'}</small>
           </div>
           <div className="import-price"><label>Custo unitário no catálogo</label><div className="money-field"><span>R$</span>
             <input inputMode="decimal" aria-label={`Custo de ${item.name}`} placeholder="Opcional" value={item.unitCostText}
